@@ -13,11 +13,13 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import keras_export
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense,Flatten,TimeDistributed,LSTM,BatchNormalization,Reshape,Conv2D
 import math		
 import tensorflow as tf
 import numpy as np
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense,Flatten,TimeDistributed,LSTM,BatchNormalization,Reshape,Conv2D
+
 
 class ConvRNN2D(RNN):
 
@@ -29,6 +31,7 @@ class ConvRNN2D(RNN):
                stateful=False,
                unroll=False,
                **kwargs):
+
     if unroll:
       raise TypeError('Unrolling isn\'t possible with '
                       'convolutional RNNs.')
@@ -60,20 +63,20 @@ class ConvRNN2D(RNN):
       rows = input_shape[2]
       cols = input_shape[3]
     rows = conv_utils.conv_output_length(rows,
-                                         cell.kernel_size[0],
+                                         cell.kernel_size[0][0],
                                          padding=cell.padding,
                                          stride=cell.strides[0],
                                          dilation=cell.dilation_rate[0])
     cols = conv_utils.conv_output_length(cols,
-                                         cell.kernel_size[1],
+                                         cell.kernel_size[0][1],
                                          padding=cell.padding,
                                          stride=cell.strides[1],
                                          dilation=cell.dilation_rate[1])
 
     if cell.data_format == 'channels_first':
-      output_shape = input_shape[:2] + (cell.filters, rows, cols)
+      output_shape = input_shape[:2] + (cell.filters[-1], rows, cols)
     elif cell.data_format == 'channels_last':
-      output_shape = input_shape[:2] + (rows, cols, cell.filters)
+      output_shape = input_shape[:2] + (rows, cols, cell.filters[-1])
 
     if not self.return_sequences:
       output_shape = output_shape[:1] + output_shape[2:]
@@ -81,10 +84,10 @@ class ConvRNN2D(RNN):
     if self.return_state:
       output_shape = [output_shape]
       if cell.data_format == 'channels_first':
-        output_shape += [(input_shape[0], cell.filters, rows, cols)
+        output_shape += [(input_shape[0], cell.filters[-1], rows, cols)
                          for _ in range(2)]
       elif cell.data_format == 'channels_last':
-        output_shape += [(input_shape[0], rows, cols, cell.filters)
+        output_shape += [(input_shape[0], rows, cols, cell.filters[-1])
                          for _ in range(2)]
     return output_shape
 
@@ -161,10 +164,12 @@ class ConvRNN2D(RNN):
       return [initial_state]
 
   def __call__(self, inputs, initial_state=None, constants=None, **kwargs):
+
     inputs, initial_state, constants = _standardize_args(
         inputs, initial_state, constants, self._num_constants)
 
     if initial_state is None and constants is None:
+
       return super(ConvRNN2D, self).__call__(inputs, **kwargs)
 
     # If any of `initial_state` or `constants` are specified and are Keras
@@ -217,6 +222,7 @@ class ConvRNN2D(RNN):
            constants=None):
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
+
     if isinstance(inputs, list):
       inputs = inputs[0]
     if initial_state is not None:
@@ -281,6 +287,7 @@ class ConvRNN2D(RNN):
       return output
 
   def reset_states(self, states=None):
+
     if not self.stateful:
       raise AttributeError('Layer must be stateful.')
     input_shape = self.input_spec[0].shape
@@ -354,7 +361,7 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
     def __init__(self,
                  filters,
                  kernel_size,
-                 feature_number, # ????feature
+                 input_channel, 
                  strides=(1, 1),
                  padding='valid',
                  data_format=None,
@@ -379,8 +386,8 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
                  **kwargs):
         """
         filters : A list , Specifies the number of filters in each layer, e.g. [10,10]
-        kernel_size : A List , Same length as filters， Window size for 1D convolution e.g. [3,3]    # ????feature
-        feature_number: int , Number of multiple time series e.g 28 sensors -->  28 
+        kernel_size : A List , Same length as filters， Window size for 1D convolution e.g. [3,3]
+        input_channel: int , Number of multiple time series e.g 28 sensors -->  28
         recurrent_activation : A str List, Specifies the tupe of activation functions
         
         
@@ -388,25 +395,24 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
 
         super(ConvLSTM1DCell, self).__init__(**kwargs)
 
-
-        self.number_of_layer = len(filters)  
-		
-        self.out_feature_number = feature_number
+        self.out_feature_number = input_channel
         self.convolutional_type = convolutional_type
+		
+        self.number_of_layer = len(filters)  
+        
 
-        # =============   Each layer has different parameters    ======================
         self.filters = filters
         self.conv_layer_number = len(filters)
         
         self.kernel_size = []
-
         for index, size in enumerate(kernel_size): 
             if self.convolutional_type[index] == "hybrid":
                 self.kernel_size.append(conv_utils.normalize_tuple((size,1), 2, 'kernel_size'))
             if self.convolutional_type[index] == "early":
-                self.kernel_size.append(conv_utils.normalize_tuple((size,feature_number), 2, 'kernel_size'))
+                self.kernel_size.append(conv_utils.normalize_tuple((size,input_channel), 2, 'kernel_size'))
                 self.out_feature_number = 1
-                feature_number = 1
+                input_channel = 1
+
         
         self.recurrent_activation = []        
         for acti in recurrent_activation:
@@ -487,15 +493,15 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
                                                constraint=self.kernel_constraint))
             
 
-														 
+												 
         for index in range(len(self.filters)):
 
             h_state_kernel = min(self.kernel_size[index][0],   int(math.ceil(state_len/self.conv_layer_number)))
             if index == self.number_of_layer-1:
-                recurrent_kernel_shape = (h_state_kernel,self.out_feature_number) + (self.filters[-1], self.filters[index] * 5)
+                recurrent_kernel_shape = (h_state_kernel,self.out_feature_number) + (self.filters[-1], self.filters[-1] * 5)
             else:
-                recurrent_kernel_shape = (h_state_kernel,self.out_feature_number) + (self.filters[-1], self.filters[index] * 4)
-
+                recurrent_kernel_shape = (h_state_kernel,self.out_feature_number) + (self.filters[-1], self.filters[-1] * 4)
+                ###################################################################################### 
 
             self.recurrent_kernel_shape.append(recurrent_kernel_shape)
             
@@ -506,7 +512,7 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
                                                          regularizer=self.recurrent_regularizer,
                                                          constraint=self.recurrent_constraint))
                 
-        
+	        
 
         if self.use_bias:
             self.bias = []
@@ -538,9 +544,9 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
         """
         inputs: shape is [batch , window_size, number_of_sensor, 1]
         """
-        
+
         h_state = states[0]                                                                 # previous memory state
-    
+ 
         c_state = states[1]                                                                 # previous carry state
         #c_shape = c_tm1.get_shape().as_list()                                             # [BATCH, conv_rest, 1, LAST_FILTER] 
                                                                                           # 
@@ -581,7 +587,7 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
             else:
                 (recurrent_kernel_i,recurrent_kernel_f,
                  recurrent_kernel_c,recurrent_kernel_o) = array_ops.split(self.recurrent_kernel[index], 4, axis=3)
-
+            #######################################################################################
             # weights for BIAS in FOUR GATES
             if self.use_bias:
                 bias_i, bias_f, bias_c, bias_o = array_ops.split(self.bias[index], 4)
@@ -598,7 +604,7 @@ class ConvLSTM1DCell(DropoutRNNCellMixin, Layer):
             h_o = self.recurrent_conv(h_o, recurrent_kernel_o)
             
             if index == self.number_of_layer-1:
-
+                #######################################################################################
                 c_c = self.recurrent_conv(c_state, recurrent_kernel_c_1)
 
                 i = self.recurrent_activation[index](x_i + h_i)
@@ -683,7 +689,7 @@ class ECLSTM1D(ConvRNN2D):
     def __init__(self,
                  filters = [10,10],
                  kernel_size = [3,3],
-                 feature_number = None,  
+                 input_channel = None,  # this ensure the 1D 
                  strides=(1, 1),
                  padding='valid',
                  data_format=None,
@@ -720,7 +726,7 @@ class ECLSTM1D(ConvRNN2D):
 
         cell = ConvLSTM1DCell(filters=filters,
                               kernel_size=kernel_size,
-                              feature_number=feature_number,  
+                              input_channel=input_channel,
                               strides=strides,
                               padding=padding,
                               data_format=data_format,
@@ -728,7 +734,7 @@ class ECLSTM1D(ConvRNN2D):
                               activation=activation,
                               recurrent_activation=recurrent_activation,
                               conv_activation = conv_activation,
-                              convolutional_type = convolutional_type,
+                              convolutional_type=convolutional_type,
                               use_bias=use_bias,
                               kernel_initializer=kernel_initializer,
                               recurrent_initializer=recurrent_initializer,
@@ -752,8 +758,9 @@ class ECLSTM1D(ConvRNN2D):
         self.activity_regularizer = regularizers.get(activity_regularizer)
 
     def call(self, inputs, mask=None, training=None, initial_state=None):
-        self.cell.reset_dropout_mask()
-        self.cell.reset_recurrent_dropout_mask()
+
+        self.cell.reset_dropout_mask()#-------------------------------------------------
+        self.cell.reset_recurrent_dropout_mask()#-------------------------------------------------
         return super(ECLSTM1D, self).call(inputs,
                                             mask=mask,
                                             training=training,
@@ -766,15 +773,13 @@ class ECLSTM1D(ConvRNN2D):
         """
 
         initial_state = K.zeros_like(inputs)
-
         # Because of all zeros, sum to delete the timestpes dimension ---->(Batch, Time_steps, window_size, numberofSensors, 1 or filters )
         initial_state = K.sum(initial_state, axis=1)
-
         # Through the convlution to inference the size of hidden state
-  
+
         for index, k_shape in enumerate(self.cell.kernel_shape):
             shape = list(k_shape)
- 
+
             shape[-1] = self.cell.filters[index]
 
             initial_state = self.cell.input_conv(initial_state,
@@ -910,92 +915,17 @@ class ECLSTM1D(ConvRNN2D):
     def from_config(cls, config):
         return cls(**config)
 
-class BahdanauAttention(tf.keras.layers.Layer):
-    def __init__(self, batch, seq, filters=1, kernel_size=3, kernel_initializer="glorot_uniform", kernel_regularizer=None
-                 , kernel_constraint=None):
-        super(BahdanauAttention, self).__init__()
-        self.batch = batch
-        self.seq = seq
-        self.filters_out = filters
-        self.kernel_size = kernel_size
-        self.kernel_initializer = kernel_initializer
-        self.kernel_regularizer = kernel_regularizer
-        self.kernel_constraint = kernel_constraint
-        
-        
-    def build(self, input_shape):
-        """
-        input_shape should be 5 dimension [batch, seq, windows_size, 1, filters ]
-        
-        
-        """
-        self.windows_size = input_shape[2]
-        self.filters_in = input_shape[-1]
-        kernel_shape = (self.kernel_size, 1, self.filters_in, self.filters_out)
-        self.weight_value = self.add_weight(shape=kernel_shape,
-                                            initializer=self.kernel_initializer,
-                                            name='kernel_value',
-                                            regularizer=self.kernel_regularizer,
-                                            constraint=self.kernel_constraint)
-        self.weight_query = self.add_weight(shape=kernel_shape,
-                                            initializer=self.kernel_initializer,
-                                            name='kernel_query',
-                                            regularizer=self.kernel_regularizer,
-                                            constraint=self.kernel_constraint)
-        self.V = tf.keras.layers.Dense(1)
-        
-
-    def call(self, inputs):
-        
-        """
-        inputs [batch, seq, windows_size, 1, filters ]
-        """
-        values = inputs[:,:(self.seq-1),:,:,:]  
-        query = inputs[:,(self.seq-1),:,:,:]   
-        
-        values = tf.reshape(values, [-1,self.windows_size,1,self.filters_in])
-        
-        values_out = K.conv2d(values, self.weight_value, strides=(1, 1),
-                              padding='valid',
-                              data_format="channels_last") # [ batch*(seq-1) , rest_window, 1, self.filters_out 1]
-        temp_shape = values_out.get_shape().as_list()
-        
-
-        values_out = tf.reshape(values_out, [-1,temp_shape[1]*temp_shape[3]])
-        values_out = tf.reshape(values_out, [-1,(self.seq-1),temp_shape[1]*temp_shape[3]])
-
-        query_out = K.conv2d(query, self.weight_query, strides=(1, 1),
-                              padding='valid',
-                              data_format="channels_last") # [ batch , rest_window, 1, self.filters_out 1]
-        query_out = tf.reshape(query_out, [-1,temp_shape[1]*temp_shape[3]])
-        query_out = tf.expand_dims(query_out, 1)
 
 
-        score = self.V(tf.nn.tanh(values_out + query_out))
-
-        attention_weights = tf.nn.softmax(score, axis=1) #[batch , seq-1, 1]
-
-        values = tf.reshape(values,[-1,(self.seq-1),self.windows_size*self.filters_in])
-        
-        context_vector = attention_weights * values
-        
-        context_vector = tf.reduce_sum(context_vector, axis=1)
-
-        query = tf.reshape(query, [-1,self.windows_size*self.filters_in])
-
-        
-        out = tf.concat([context_vector, query], axis=-1)
-
-        return out
-		
 def check_the_config_valid(para, window_size,feature):
     initial_state = np.zeros((1,window_size,feature,1))
     initial_state = tf.cast(initial_state, 'float32')
     initial_state = K.zeros_like(initial_state)
+
     channel = 1
     try:
         for i in range(para["preprocessing_layers"]):
-            
+
             shape = (para["pre_kernel_width"], 1, channel,para["pre_number_filters"])
             channel = para["pre_number_filters"]
             initial_state = K.conv2d(initial_state, array_ops.zeros(tuple(shape)), (para["pre_strides"],1))#,dilation_rate=(para["pre_dilation_rate"],1))
@@ -1007,7 +937,7 @@ def check_the_config_valid(para, window_size,feature):
                    len(para["eclstm_{}_fusion".format(i)]), "Archtecture Parameters of {} layer should be in same length".format(i)
 
             for j in range(len(para["eclstm_{}_recurrent_activation".format(i)])):
-                
+
                 if para["eclstm_{}_recurrent_activation".format(i)][0] is None:
                     break
                 if para["eclstm_{}_fusion".format(i)][j] == "early":
@@ -1018,26 +948,23 @@ def check_the_config_valid(para, window_size,feature):
                     shape = (para["eclstm_{}_kernel_width".format(i)][j], 1, channel,para["eclstm_{}_number_filters".format(i)][j] )
                     channel =     para["eclstm_{}_number_filters".format(i)][j]
                 initial_state = K.conv2d(initial_state, array_ops.zeros(tuple(shape)), (para["eclstm_{}_strides".format(i)],1))
+        print("valid Configuration!")
         return True
     except:
         print("Invalid Configuration! Try smaller strides or kernel size or greater window size!")
         return False
 		
+		
+
+
+
 def build_the_model(para, seq, window, feature):
     model =Sequential()
-    if para["preprocessing_layers"]>1:
-        model.add(Flatten())    
-        model.add(Reshape((window, feature,1), input_shape=(None,1)))
-        
+    if para["preprocessing_layers"]>=1:
         for i in range(para["preprocessing_layers"]):
-         
-        
-            model.add(Conv2D(para["pre_number_filters"], (para["pre_kernel_width"], 1), 
+            model.add(TimeDistributed(Conv2D(para["pre_number_filters"], (para["pre_kernel_width"], 1), 
                                           strides=(para["pre_strides"],1),
-                                          padding="valid", activation=para["pre_activation"][0]))
-            
-        model.add(Reshape(( seq, window, feature,1), input_shape=(window, feature,1)))
-        
+                                          padding="valid", activation=para["pre_activation"])))
     return_sequences = True
     
     for i in range(1,5):
@@ -1047,31 +974,34 @@ def build_the_model(para, seq, window, feature):
             return_sequences = False
         elif para["eclstm_{}_recurrent_activation".format(i+1)][0] is None:
             return_sequences = False
-            
-            
+
+
         model.add(ECLSTM1D(filters=para["eclstm_{}_number_filters".format(i)], 
                            kernel_size=para["eclstm_{}_kernel_width".format(i)],
                            recurrent_activation=para["eclstm_{}_recurrent_activation".format(i)],
                            conv_activation = para["eclstm_{}_conv_activation".format(i)],
                            convolutional_type = para["eclstm_{}_fusion".format(i)],
                            strides = (para["eclstm_{}_strides".format(i)],1),
-                           feature_number= feature,
+                           input_channel= feature,
                            return_sequences=return_sequences))
 
- 
+
 
         model.add(BatchNormalization())
-        
+
         if "early" in para["eclstm_{}_fusion".format(i)]:
             feature = 1
-    model.add(Flatten())        
+
+    model.add(Flatten())   
+    #model.add(tf.compat.v2.keras.layers.Dropout(0.4))
     for i in range(1,5):
         if para["prediction_{}_filters".format(i)]==0:
             break
         model.add(Dense(units = para["prediction_{}_filters".format(i)], 
                         activation = para["prediction_{}_activation".format(i)]))
+
     model.add(Dense(units = 1, activation = "linear"))
-    
+
     model.compile(loss='mse', optimizer='Adam')
             
     return model
