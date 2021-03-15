@@ -1,4 +1,5 @@
 import warnings
+import uuid
 
 warnings.filterwarnings("ignore")
 import pandas as pd
@@ -26,27 +27,34 @@ class RemainingUsefulLife:
 
     Attributes:
         data: Data to predict the remaining useful life for.
-        data_id: 
+        data_id:
+        sequence_length:
+        window_size:
+        model_id:
+        train_FD:
+        test_FD:
+        X_batch:
+        y_batch:
+        number_of_sensors:
     """
 
     def __init__(self,
                  data: pd.DataFrame,
                  data_id: str = '',
-                 model_id: int = 1,
                  sequence_length: int = 5,
                  window_size: int = 16) -> None:
         """Inits RemainingUsefulLife."""
         self.__data = data
         self.__data_id = data_id
         self.__model = None
-        self.__model_id = model_id
+        self.__model_id = uuid.uuid1()
         self.__sequence_length = sequence_length
         self.__window_size = window_size
         self.__train_FD = None
         self.__test_FD = None
         self.__X_batch = None
         self.__y_batch = None
-        self.__number_of_sensor = None
+        self.__number_of_sensors = None
 
     def rul(self, max_life: int) -> None:
         id = 'engine_id'
@@ -57,15 +65,15 @@ class RemainingUsefulLife:
             max_cycle = max(cycle_list)
 
             knee_point = max_cycle - max_life
-            kink_RUL = []
+            kink_rul = []
+
             for i in range(0, len(cycle_list)):
-                #
                 if i < knee_point:
-                    kink_RUL.append(max_life)
+                    kink_rul.append(max_life)
                 else:
                     tmp = max_cycle - i - 1
-                    kink_RUL.append(tmp)
-            rul.extend(kink_RUL)
+                    kink_rul.append(tmp)
+            rul.extend(kink_rul)
 
         self.__train_FD["RUL"] = rul
 
@@ -77,15 +85,16 @@ class RemainingUsefulLife:
             cycle_list = testFD_of_one_id['cycle'].tolist()
             max_cycle = max(cycle_list) + true_rul
             knee_point = max_cycle - max_life
-            kink_RUL = []
+            kink_rul = []
+
             for i in range(0, len(cycle_list)):
                 if i < knee_point:
-                    kink_RUL.append(max_life)
+                    kink_rul.append(max_life)
                 else:
                     tmp = max_cycle - i - 1
-                    kink_RUL.append(tmp)
+                    kink_rul.append(tmp)
 
-            rul.extend(kink_RUL)
+            rul.extend(kink_rul)
 
         self.__test_FD["RUL"] = rul
 
@@ -120,22 +129,22 @@ class RemainingUsefulLife:
 
         self.__X_batch = np.expand_dims(self.__X_batch, axis=4)
         self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
-        self.__number_of_sensor = self.__X_batch.shape[-2]
+        self.__number_of_sensors = self.__X_batch.shape[-2]
 
     def initialize_model(self) -> None:
-
         valid = check_the_config_valid(architecture_parameters,
                                        self.__window_size,
-                                       self.__number_of_sensor)
+                                       self.__number_of_sensors)
         if valid:
             self.__model = build_the_model(architecture_parameters,
                                            self.__sequence_length,
                                            self.__window_size,
-                                           self.__number_of_sensor)
+                                           self.__number_of_sensors)
         else:
             print("invalid configuration")
+
         input_data = tf.keras.layers.Input(
-            shape=(self.__sequence_length, self.__window_size, self.__number_of_sensor, 1))
+            shape=(self.__sequence_length, self.__window_size, self.__number_of_sensors, 1))
         out = self.__model(input_data)
         print(self.__model.summary())
 
@@ -169,22 +178,19 @@ class RemainingUsefulLife:
         model_list = os.listdir(log_dir)
         model_list = [file for file in model_list if "val_loss" in file]
         self.__model.load_weights(log_dir + model_list[-1])
-        y_batch_pred = self._model.predict(x_batch)
-        y_batch_pred = y_batch_pred.reshape(y_batch_pred.shape[0], y_batch_pred.shape[1])
 
+        y_batch_pred = self.__model.predict(x_batch)
+        y_batch_pred = y_batch_pred.reshape(y_batch_pred.shape[0], y_batch_pred.shape[1])
         y_batch_reshape = y_batch.reshape(y_batch.shape[0], y_batch.shape[1])
         rmse_on_train = np.sqrt(mean_squared_error(y_batch_pred, y_batch_reshape))
 
         print(f'The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.')
 
-        x_batch_test, y_batch_test = test_batch_generator(test_FD,
+        x_batch_test, y_batch_test = test_batch_generator(self.__test_FD,
                                                           sequence_length=self.__sequence_length,
                                                           window_size=self.__window_size)
 
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
-
-        model_id = 4
-
         model_weights = f'trained_models/{self.__data_id}/best_model_{self.__data_id}_{self.__model_id}.h5'
         if not os.path.exists(model_weights):
             print("no such a weight file")
@@ -195,3 +201,6 @@ class RemainingUsefulLife:
         rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
 
         print(f'The RMSE on test dataset {self.__data_id} is {rmse_on_test}.')
+
+    def get_model(self) -> object:
+        return self.__model.copy(deep=True)
