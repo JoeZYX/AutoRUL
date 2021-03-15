@@ -51,8 +51,8 @@ class RemainingUsefulLife:
     def rul(self, max_life: int) -> None:
         id = 'engine_id'
         rul = []
-        for _id in set(train_FD[id]):
-            trainFD_of_one_id = train_FD[train_FD[id] == _id]
+        for _id in set(self.__train_FD[id]):
+            trainFD_of_one_id = self.__train_FD[self.__train_FD[id] == _id]
             cycle_list = trainFD_of_one_id['cycle'].tolist()
             max_cycle = max(cycle_list)
 
@@ -67,43 +67,43 @@ class RemainingUsefulLife:
                     kink_RUL.append(tmp)
             rul.extend(kink_RUL)
 
-        train_FD["RUL"] = rul
+        self.__train_FD["RUL"] = rul
 
         id = 'engine_id'
         rul = []
-        for _id_test in set(test_FD[id]):
+        for _id_test in set(self.__test_FD[id]):
             true_rul = int(RUL_FD.iloc[_id_test - 1])
-            testFD_of_one_id = test_FD[test_FD[id] == _id_test]
+            testFD_of_one_id = self.__test_FD[self.__test_FD[id] == _id_test]
             cycle_list = testFD_of_one_id['cycle'].tolist()
             max_cycle = max(cycle_list) + true_rul
-            knee_point = max_cycle - MAXLIFE
+            knee_point = max_cycle - max_life
             kink_RUL = []
             for i in range(0, len(cycle_list)):
                 if i < knee_point:
-                    kink_RUL.append(MAXLIFE)
+                    kink_RUL.append(max_life)
                 else:
                     tmp = max_cycle - i - 1
                     kink_RUL.append(tmp)
 
             rul.extend(kink_RUL)
 
-        test_FD["RUL"] = rul
+        self.__test_FD["RUL"] = rul
 
     def data_prep(self) -> None:
-        col_to_drop = identify_and_remove_unique_columns(train_FD)
-        train_FD = train_FD.drop(col_to_drop, axis=1)
-        test_FD = test_FD.drop(col_to_drop, axis=1)
-        mean = train_FD.iloc[:, 2:-1].mean()
-        std = train_FD.iloc[:, 2:-1].std()
+        col_to_drop = identify_and_remove_unique_columns(self.__train_FD)
+        self.__train_FD = self.__train_FD.drop(col_to_drop, axis=1)
+        self.__test_FD = self.__test_FD.drop(col_to_drop, axis=1)
+        mean = self.__train_FD.iloc[:, 2:-1].mean()
+        std = self.__train_FD.iloc[:, 2:-1].std()
         std.replace(0, 1, inplace=True)
 
         # training dataset
-        train_FD.iloc[:, 2:-1] = (train_FD.iloc[:, 2:-1] - mean) / std
+        self.__train_FD.iloc[:, 2:-1] = (self.__train_FD.iloc[:, 2:-1] - mean) / std
 
         # Testing dataset
-        test_FD.iloc[:, 2:-1] = (test_FD.iloc[:, 2:-1] - mean) / std
-        training_data = train_FD.values
-        testing_data = test_FD.values
+        self.__test_FD.iloc[:, 2:-1] = (self.__test_FD.iloc[:, 2:-1] - mean) / std
+        training_data = self.__train_FD.values
+        testing_data = self.__test_FD.values
 
         x_train = training_data[:, 2:-1]
         y_train = training_data[:, -1]
@@ -112,9 +112,10 @@ class RemainingUsefulLife:
         x_test = testing_data[:, 2:-1]
         y_test = testing_data[:, -1]
         print(f'Testing: {x_test.shape}, {y_test.shape}')
-        
+
         # Prepare the training set according to the  window size and sequence_length
-        self.__X_batch, self.__y_batch = batch_generator(train_FD, sequence_length=self.__sequence_length,
+        self.__X_batch, self.__y_batch = batch_generator(self.__train_FD,
+                                                         sequence_length=self.__sequence_length,
                                                          window_size=self.__window_size)
 
         self.__X_batch = np.expand_dims(self.__X_batch, axis=4)
@@ -123,9 +124,13 @@ class RemainingUsefulLife:
 
     def initialize_model(self) -> None:
 
-        valid = check_the_config_valid(parameters, self.__window_size, self.__number_of_sensor)
+        valid = check_the_config_valid(architecture_parameters,
+                                       self.__window_size,
+                                       self.__number_of_sensor)
         if valid:
-            self.__model = build_the_model(parameters, self.__sequence_length, self.__window_size,
+            self.__model = build_the_model(architecture_parameters,
+                                           self.__sequence_length,
+                                           self.__window_size,
                                            self.__number_of_sensor)
         else:
             print("invalid configuration")
