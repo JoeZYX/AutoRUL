@@ -1,4 +1,5 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -17,6 +18,7 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import TimeDistributed
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from parameters import architecture_parameters
 
 
 class RemainingUsefulLife:
@@ -26,29 +28,40 @@ class RemainingUsefulLife:
         data: Data to predict the remaining useful life for.
         data_id: 
     """
-    def __init__(self, data: pd.DataFrame, data_id: str = '') -> None:
+
+    def __init__(self,
+                 data: pd.DataFrame,
+                 data_id: str = '',
+                 model_id: int = 1,
+                 sequence_length: int = 5,
+                 window_size: int = 16) -> None:
         """Inits RemainingUsefulLife."""
         self.__data = data
         self.__data_id = data_id
         self.__model = None
-        self.__model_id = None
+        self.__model_id = model_id
+        self.__sequence_length = sequence_length
+        self.__window_size = window_size
+        self.__train_FD = None
+        self.__test_FD = None
+        self.__X_batch = None
+        self.__y_batch = None
+        self.__number_of_sensor = None
 
     def rul(self, max_life: int) -> None:
         id = 'engine_id'
-        MAXLIFE = 120  # or 125 , 130
-        # piecewise linear RUL
         rul = []
         for _id in set(train_FD[id]):
             trainFD_of_one_id = train_FD[train_FD[id] == _id]
             cycle_list = trainFD_of_one_id['cycle'].tolist()
             max_cycle = max(cycle_list)
 
-            knee_point = max_cycle - MAXLIFE
+            knee_point = max_cycle - max_life
             kink_RUL = []
             for i in range(0, len(cycle_list)):
                 #
                 if i < knee_point:
-                    kink_RUL.append(MAXLIFE)
+                    kink_RUL.append(max_life)
                 else:
                     tmp = max_cycle - i - 1
                     kink_RUL.append(tmp)
@@ -94,78 +107,41 @@ class RemainingUsefulLife:
 
         x_train = training_data[:, 2:-1]
         y_train = training_data[:, -1]
-        print("training", x_train.shape, y_train.shape)
+        print(f'Training: {x_train.shape}, {y_train.shape}')
 
         x_test = testing_data[:, 2:-1]
         y_test = testing_data[:, -1]
-        print("testing", x_test.shape, y_test.shape)
-        sequence_length = 5
-        window_size = 16
+        print(f'Testing: {x_test.shape}, {y_test.shape}')
+        
         # Prepare the training set according to the  window size and sequence_length
-        x_batch, y_batch = batch_generator(train_FD, sequence_length=sequence_length, window_size=window_size)
+        self.__X_batch, self.__y_batch = batch_generator(train_FD, sequence_length=self.__sequence_length,
+                                                         window_size=self.__window_size)
 
-        x_batch = np.expand_dims(x_batch, axis=4)
-        y_batch = np.expand_dims(y_batch, axis=1)
-        number_of_sensor = x_batch.shape[-2]
+        self.__X_batch = np.expand_dims(self.__X_batch, axis=4)
+        self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
+        self.__number_of_sensor = self.__X_batch.shape[-2]
 
     def initialize_model(self) -> None:
-        para = {
-            # preprocessing part
-            "preprocessing_layers": 0,
-            "pre_kernel_width": 3,
-            "pre_number_filters": 10,
-            "pre_strides": 2,
-            "pre_activation": "relu",
 
-            # ECLSTM feature extraction part
-            "eclstm_1_recurrent_activation": ['linear', "hard_sigmoid"],
-            "eclstm_1_conv_activation": ['hard_sigmoid', "hard_sigmoid"],
-            "eclstm_1_kernel_width": [3, 3],
-            "eclstm_1_number_filters": [10, 10],
-            "eclstm_1_strides": 1,
-            "eclstm_1_fusion": ["early", "early"],
-            "eclstm_2_recurrent_activation": ['linear', "hard_sigmoid"],
-            "eclstm_2_conv_activation": ['hard_sigmoid', "hard_sigmoid"],
-            "eclstm_2_kernel_width": [3, 3],
-            "eclstm_2_number_filters": [20, 20],
-            "eclstm_2_strides": 1,
-            "eclstm_2_fusion": ["early", "early"],
-            "eclstm_3_recurrent_activation": [None],
-            "eclstm_3_conv_activation": [None],
-            "eclstm_3_kernel_width": [None],
-            "eclstm_3_number_filters": [None],
-            "eclstm_3_strides": None,
-            "eclstm_3_fusion": [None],
-            "eclstm_4_recurrent_activation": [None],
-            "eclstm_4_conv_activation": [None],
-            "eclstm_4_kernel_width": [None],
-            "eclstm_4_number_filters": [None],
-            "eclstm_4_strides": None,
-            "eclstm_4_fusion": [None],
-
-            # Prediction
-            "prediction_1_filters": 150,
-            "prediction_1_activation": "relu",
-            "prediction_2_filters": 0,
-            "prediction_2_activation": None,
-            "prediction_3_filters": 0,
-            "prediction_3_activation": None,
-            "prediction_4_filters": 0,
-            "prediction_4_activation": None,
-        }
-        valid = check_the_config_valid(para, window_size, number_of_sensor)
+        valid = check_the_config_valid(parameters, self.__window_size, self.__number_of_sensor)
         if valid:
-            model = build_the_model(para, sequence_length, window_size, number_of_sensor)
+            self.__model = build_the_model(parameters, self.__sequence_length, self.__window_size,
+                                           self.__number_of_sensor)
         else:
             print("invalid configuration")
-        input_data = tf.keras.layers.Input(shape=(sequence_length, window_size, number_of_sensor, 1))
-        out = model(input_data)
-        print(model.summary())
+        input_data = tf.keras.layers.Input(
+            shape=(self.__sequence_length, self.__window_size, self.__number_of_sensor, 1))
+        out = self.__model(input_data)
+        print(self.__model.summary())
 
     def train_model(self, data_id, model, x_batch, y_batch) -> None:
-        dateTimeObj = datetime.now()
-        log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(data_id, dateTimeObj.year, dateTimeObj.month, dateTimeObj.day,
-                                                      dateTimeObj.hour, dateTimeObj.minute, dateTimeObj.second)
+        date_time_obj = datetime.now()
+        log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(data_id, date_time_obj.year,
+                                                      date_time_obj.month,
+                                                      date_time_obj.day,
+                                                      date_time_obj.hour,
+                                                      date_time_obj.minute,
+                                                      date_time_obj.second)
 
         os.makedirs(log_dir)
 
@@ -184,33 +160,33 @@ class RemainingUsefulLife:
 
         model.save_weights(log_dir + 'trained_weights_final.h5')
 
-    def evaluate(self, log_dir, x_batch) -> None:
-        modellist = os.listdir(log_dir)
-        modellist = [file for file in modellist if "val_loss" in file]
-        self.__model.load_weights(log_dir + modellist[-1])
+    def evaluate_model(self, log_dir, x_batch) -> None:
+        model_list = os.listdir(log_dir)
+        model_list = [file for file in model_list if "val_loss" in file]
+        self.__model.load_weights(log_dir + model_list[-1])
         y_batch_pred = self._model.predict(x_batch)
         y_batch_pred = y_batch_pred.reshape(y_batch_pred.shape[0], y_batch_pred.shape[1])
 
         y_batch_reshape = y_batch.reshape(y_batch.shape[0], y_batch.shape[1])
         rmse_on_train = np.sqrt(mean_squared_error(y_batch_pred, y_batch_reshape))
 
-        print("The RMSE on Training dataset {} is {}.".format(Data_id, rmse_on_train))
+        print(f'The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.')
 
         x_batch_test, y_batch_test = test_batch_generator(test_FD,
-                                                          sequence_length=sequence_length,
-                                                          window_size=window_size)
+                                                          sequence_length=self.__sequence_length,
+                                                          window_size=self.__window_size)
 
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
 
         model_id = 4
 
-        model_weights = 'trained_models/{}/best_model_{}_{}.h5'.format(self.__data_id, self.__data_id, model_id)
+        model_weights = f'trained_models/{self.__data_id}/best_model_{self.__data_id}_{self.__model_id}.h5'
         if not os.path.exists(model_weights):
             print("no such a weight file")
         else:
-            model.load_weights(model_weights)
+            self.__model.load_weights(model_weights)
 
-        y_batch_pred_test = model.predict(x_batch_test)
+        y_batch_pred_test = self.__model.predict(x_batch_test)
         rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
 
-        print("The RMSE on test dataset {} is {}.".format(self.__data_id, rmse_on_test))
+        print(f'The RMSE on test dataset {self.__data_id} is {rmse_on_test}.')
