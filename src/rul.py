@@ -40,25 +40,32 @@ class RemainingUsefulLife:
     """
     def __init__(self, data: pd.DataFrame, data_id: str = '', sequence_length: int = 5, window_size: int = 16) -> None:
         """Inits RemainingUsefulLife."""
+        if data is None: raise ValueError('No data was provided.')
+
         self.__data = data
         self.__data_id = data_id
         self.__model = None
-        self.__model_id = uuid.uuid1()
+        self.__model_id = None  # uuid.uuid1()
         self.__sequence_length = sequence_length
         self.__window_size = window_size
         self.__train_FD = None
         self.__test_FD = None
+        self.__RUL_FD = None
         self.__X_batch = None
         self.__y_batch = None
         self.__number_of_sensors = None
         self.__log_dir = None
 
-    def rul(self, max_life: int) -> None:
-        id = 'engine_id'
+    def data_split(self, train_fold: int, test_fold: int, rul: str) -> None:
+        self.__train_FD = self.__data.iloc[:train_fold, :]
+        self.__test_FD = self.__data.iloc[train_fold:test_fold, :]
+
+    def rul(self, id: str, max_life: int, train_id: str, test_id: str) -> None:
+        id = id
         rul = []
         for _id in set(self.__train_FD[id]):
             trainFD_of_one_id = self.__train_FD[self.__train_FD[id] == _id]
-            cycle_list = trainFD_of_one_id['cycle'].tolist()
+            cycle_list = trainFD_of_one_id[train_id].tolist()
             max_cycle = max(cycle_list)
 
             knee_point = max_cycle - max_life
@@ -74,12 +81,12 @@ class RemainingUsefulLife:
 
         self.__train_FD["RUL"] = rul
 
-        id = 'engine_id'
+        id = id
         rul = []
         for _id_test in set(self.__test_FD[id]):
-            true_rul = int(RUL_FD.iloc[_id_test - 1])
+            true_rul = int(self.__RUL_FD.iloc[_id_test - 1])
             testFD_of_one_id = self.__test_FD[self.__test_FD[id] == _id_test]
-            cycle_list = testFD_of_one_id['cycle'].tolist()
+            cycle_list = testFD_of_one_id[test_id].tolist()
             max_cycle = max(cycle_list) + true_rul
             knee_point = max_cycle - max_life
             kink_rul = []
@@ -143,9 +150,7 @@ class RemainingUsefulLife:
 
     def train_model(self) -> None:
         date_time_obj = datetime.now()
-        self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id, date_time_obj.year, date_time_obj.month,
-                                                             date_time_obj.day, date_time_obj.hour,
-                                                             date_time_obj.minute, date_time_obj.second)
+        self.__log_dir = f'logs/{self.__data_id}_{date_time_obj.year}_{date_time_obj.month}_{date_time_obj.day}_{date_time_obj.hour}_{date_time_obj.minute}_{date_time_obj.second}/'
 
         os.makedirs(self.__log_dir)
 
