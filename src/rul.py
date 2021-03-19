@@ -1,25 +1,22 @@
-import warnings
 import uuid
+import warnings
 
 warnings.filterwarnings("ignore")
-import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
-import time
-from utilities import *
-from sklearn.metrics import mean_squared_error
 import os
 from datetime import datetime
-from ECLSTM import ECLSTM1D
-from ECLSTM import check_the_config_valid
-from ECLSTM import build_the_model
+from typing import List
+
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.metrics import mean_squared_error
+from tensorflow.keras.callbacks import (EarlyStopping, ModelCheckpoint, ReduceLROnPlateau)
+from tensorflow.keras.layers import Dense, Flatten, TimeDistributed
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
-from tensorflow.keras.layers import Flatten
-from tensorflow.keras.layers import TimeDistributed
-from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+
+from ECLSTM import ECLSTM1D, build_the_model, check_the_config_valid
 from parameters import architecture_parameters
+from utilities import *
 
 
 class RemainingUsefulLife:
@@ -27,7 +24,6 @@ class RemainingUsefulLife:
 
     Attributes:
         data: Data to predict the remaining useful life for.
-        data_id: ID of the given dataframe.
         sequence_length:
         window_size:
         model_id: Generated uuid.
@@ -38,14 +34,25 @@ class RemainingUsefulLife:
         number_of_sensors:
         log_dir:
     """
-    def __init__(self, data: pd.DataFrame, data_id: str = '', sequence_length: int = 5, window_size: int = 16) -> None:
+    def __init__(self,
+                 path_to_data: str,
+                 data_id: str,
+                 timestamp: str,
+                 non_features: List[str],
+                 max_life: int = 120,
+                 sequence_length: int = 5,
+                 window_size: int = 16) -> None:
         """Inits RemainingUsefulLife."""
-        if data is None: raise ValueError('No data was provided.')
+        if not path_to_data: raise ValueError('No path was provided.')
 
-        self.__data = data
+        self.__data = pd.read_csv(f'{path_to_data}.csv', sep=',', decimal='.', encoding='ISO-8859-1')
         self.__data_id = data_id
+        self.__rtf_id = self.__data['rtf_id']
+        self.__timestamp = timestamp
+        self.__max_life = max_life
+        self.__non_features = non_features
         self.__model = None
-        self.__model_id = None  # uuid.uuid1()
+        self.__model_id = None
         self.__sequence_length = sequence_length
         self.__window_size = window_size
         self.__train_FD = None
@@ -56,56 +63,87 @@ class RemainingUsefulLife:
         self.__number_of_sensors = None
         self.__log_dir = None
 
-    def data_split(self, train_fold: int, test_fold: int, rul: str) -> None:
-        self.__train_FD = self.__data.iloc[:train_fold, :]
-        self.__test_FD = self.__data.iloc[train_fold:test_fold, :]
+    def train(self, train_indices: List[int], test_indices: List[int]) -> None:
+        self.__data_split(train_indices, test_indices)
+        self.__data_prep()
+        self.__initialize_model()
+        self.__train_model()
 
-    def rul(self, id: str, max_life: int, train_id: str, test_id: str) -> None:
-        id = id
+    def __data_split(self, train_indices: List[int], test_indices: List[int]) -> None:
+        self.__train_FD = self.__data.iloc[:train_indices]
+        self.__test_FD = self.__data.iloc[train_indices:]
+        self.__RUL_FD = self.__data['RUL'].iloc[train_indices:]
+
+    def rul(self) -> None:
+        """
+        Find unique IDs.
+        Store one ID of given rtf_id.
+        Concat cycle / timestamp to 1D-array.
+        Store last cycle / timestamp of one ID.
+        Compute knee_point -> for ID = 1 it is 192 (last timestamp) - 120 (max_life) = 72.
+        Find all values smaller than knee_point and append 120 (max_life) to kink_rul,
+        values greater knee_point will be appended as last timestamp - i - 1.
+
+        Graph:
+        ________________________
+                                \
+                                 \
+                                  \
+                                   \
+                                    \
+                                     \
+                                      \
+                                       \
+        """
+        id = self.__rtf_id
         rul = []
         for _id in set(self.__train_FD[id]):
             trainFD_of_one_id = self.__train_FD[self.__train_FD[id] == _id]
-            cycle_list = trainFD_of_one_id[train_id].tolist()
+            cycle_list = trainFD_of_one_id[self.__timestamp].tolist()
             max_cycle = max(cycle_list)
 
-            knee_point = max_cycle - max_life
+            knee_point = max_cycle - self.__max_life
             kink_rul = []
 
             for i in range(0, len(cycle_list)):
                 if i < knee_point:
-                    kink_rul.append(max_life)
+                    kink_rul.append(self.__max_life)
                 else:
                     tmp = max_cycle - i - 1
                     kink_rul.append(tmp)
             rul.extend(kink_rul)
 
-        self.__train_FD["RUL"] = rul
+        self.__train_FD["RUL_pw"] = rul
 
-        id = id
+        id = self.__rtf_id
         rul = []
         for _id_test in set(self.__test_FD[id]):
             true_rul = int(self.__RUL_FD.iloc[_id_test - 1])
             testFD_of_one_id = self.__test_FD[self.__test_FD[id] == _id_test]
-            cycle_list = testFD_of_one_id[test_id].tolist()
+            cycle_list = testFD_of_one_id[self.__timestamp].tolist()
             max_cycle = max(cycle_list) + true_rul
-            knee_point = max_cycle - max_life
+            knee_point = max_cycle - self.__max_life
             kink_rul = []
 
             for i in range(0, len(cycle_list)):
                 if i < knee_point:
-                    kink_rul.append(max_life)
+                    kink_rul.append(self.__max_life)
                 else:
                     tmp = max_cycle - i - 1
                     kink_rul.append(tmp)
 
             rul.extend(kink_rul)
 
-        self.__test_FD["RUL"] = rul
+        self.__test_FD["RUL_pw"] = rul
 
-    def data_prep(self) -> None:
+    def __data_prep(self) -> None:
         col_to_drop = identify_and_remove_unique_columns(self.__train_FD)
         self.__train_FD = self.__train_FD.drop(col_to_drop, axis=1)
         self.__test_FD = self.__test_FD.drop(col_to_drop, axis=1)
+
+        # drop non_features
+        self.__train_FD = self.__train_FD.drop(self.__non_features, axis=1)
+        self.__test_FD = self.__test_FD.drop(self.__non_features, axis=1)
         mean = self.__train_FD.iloc[:, 2:-1].mean()
         std = self.__train_FD.iloc[:, 2:-1].std()
         std.replace(0, 1, inplace=True)
@@ -135,7 +173,7 @@ class RemainingUsefulLife:
         self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
         self.__number_of_sensors = self.__X_batch.shape[-2]
 
-    def initialize_model(self) -> None:
+    def __initialize_model(self) -> None:
         valid = check_the_config_valid(architecture_parameters, self.__window_size, self.__number_of_sensors)
         if valid:
             self.__model = build_the_model(architecture_parameters, self.__sequence_length, self.__window_size,
@@ -148,9 +186,11 @@ class RemainingUsefulLife:
         out = self.__model(input_data)
         print(self.__model.summary())
 
-    def train_model(self) -> None:
+    def __train_model(self) -> None:
         date_time_obj = datetime.now()
-        self.__log_dir = f'logs/{self.__data_id}_{date_time_obj.year}_{date_time_obj.month}_{date_time_obj.day}_{date_time_obj.hour}_{date_time_obj.minute}_{date_time_obj.second}/'
+        self.__log_dir = (
+            f'logs/{self.__data_id}_{date_time_obj.year}_{date_time_obj.month}_{date_time_obj.day}_{date_time_obj.hour}\
+                  _{date_time_obj.minute}_{date_time_obj.second}/')
 
         os.makedirs(self.__log_dir)
 
@@ -186,6 +226,7 @@ class RemainingUsefulLife:
                                                           window_size=self.__window_size)
 
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
+        self.__model_id = uuid.uuid1()
         model_weights = f'trained_models/{self.__data_id}/best_model_{self.__data_id}_{self.__model_id}.h5'
         if not os.path.exists(model_weights):
             print("no such a weight file")
