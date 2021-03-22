@@ -37,7 +37,6 @@ class RemainingUsefulLife:
     def __init__(self,
                  path_to_data: str,
                  data_id: str,
-                 timestamp: str,
                  non_features: List[str],
                  max_life: int = 120,
                  sequence_length: int = 5,
@@ -48,7 +47,12 @@ class RemainingUsefulLife:
         self.__data = pd.read_csv(f'{path_to_data}.csv', sep=',', decimal='.', encoding='ISO-8859-1')
         self.__data_id = data_id
         self.__rtf_id = self.__data['rtf_id']
-        self.__timestamp = timestamp
+
+        for col in self.__data.columns:
+            if col.lower() == 'timestamp':
+                self.__data.rename({'timestamp': 'cycle'}, axis=1, inplace=True)
+
+        self.__timestamp = self.__data['cycle']
         self.__max_life = max_life
         self.__non_features = non_features
         self.__model = None
@@ -70,9 +74,9 @@ class RemainingUsefulLife:
         self.__train_model()
 
     def __data_split(self, train_indices: List[int], test_indices: List[int]) -> None:
-        self.__train_FD = self.__data.iloc[:train_indices]
-        self.__test_FD = self.__data.iloc[train_indices:]
-        self.__RUL_FD = self.__data['RUL'].iloc[train_indices:]
+        self.__train_FD = self.__data.iloc[train_indices[0]:train_indices[-1]]
+        self.__test_FD = self.__data.iloc[test_indices[0]:test_indices[-1]]
+        self.__RUL_FD = self.__data['RUL'].iloc[test_indices[0]:test_indices[1]]
 
     def rul(self) -> None:
         """

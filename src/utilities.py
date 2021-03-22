@@ -5,13 +5,13 @@ import numpy as np
 import pandas as pd
 import tensorflow.keras as keras
 from sklearn import preprocessing
-from tsfresh.feature_selection.significance_tests import (target_real_feature_binary_test,
-                                                          target_real_feature_real_test)
+from tsfresh.feature_selection.significance_tests import (
+    target_real_feature_binary_test, target_real_feature_real_test)
 
 
 def identify_and_remove_unique_columns(Dataframe):
     Dataframe = Dataframe.copy()
-    del Dataframe["engine_id"]
+    del Dataframe["rtf_id"]
     del Dataframe["cycle"]
 
     unique_counts = Dataframe.nunique()
@@ -41,11 +41,11 @@ def identify_and_remove_unique_columns(Dataframe):
 
 def test_new_generator(test_data, sequence_length=5, window_size=9):
 
-    engine_ids = list(test_data["engine_id"].unique())
+    engine_ids = list(test_data["rtf_id"].unique())
     df_new = []
     feature_number = test_data.shape[1] - 3
-    for _id in set(test_data['engine_id']):
-        test_of_one_id = test_data[test_data['engine_id'] == _id]
+    for _id in set(test_data['rtf_id']):
+        test_of_one_id = test_data[test_data['rtf_id'] == _id]
         if test_of_one_id.shape[0] == sequence_length + window_size - 1:
             window_temp = test_of_one_id
         else:
@@ -60,16 +60,16 @@ def test_new_generator(test_data, sequence_length=5, window_size=9):
 
 def test_batch_generator(test, sequence_length=10, window_size=10):
     test_data = test_new_generator(test, sequence_length=sequence_length, window_size=window_size)
-    engine_ids = list(test_data["engine_id"].unique())
+    engine_ids = list(test_data["rtf_id"].unique())
     index_list = []
     temp = test_data.copy()
     feature_number = test_data.shape[1] - 3
-    x_shape = (len(test_data["engine_id"].unique()), sequence_length, window_size, feature_number)
+    x_shape = (len(test_data["rtf_id"].unique()), sequence_length, window_size, feature_number)
     x_batch = np.zeros(shape=x_shape, dtype=np.float32)
-    y_shape = (len(test_data["engine_id"].unique()))
+    y_shape = (len(test_data["rtf_id"].unique()))
     y_batch = np.zeros(shape=y_shape, dtype=np.float32)
-    for _id in set(test_data['engine_id']):
-        test_of_one_id = test_data[test_data['engine_id'] == _id]
+    for _id in set(test_data['rtf_id']):
+        test_of_one_id = test_data[test_data['rtf_id'] == _id]
         if test_of_one_id.shape[0] < sequence_length + window_size - 1:
             for i in range(sequence_length + window_size - 1 - test_of_one_id.shape[0]):
                 test_of_one_id = pd.concat((pd.DataFrame(test_of_one_id.iloc[0, :]).T, test_of_one_id))
@@ -134,10 +134,10 @@ def batch_generator(training_data, sequence_length=15, window_size=15):
     """
     Generator function for creating random batches of training-data
     """
-    engine_ids = list(training_data["engine_id"].unique())
+    engine_ids = list(training_data["rtf_id"].unique())
     temp = training_data.copy()
     for id_ in engine_ids:
-        indexes = temp[temp["engine_id"] == id_].index
+        indexes = temp[temp["rtf_id"] == id_].index
         traj_data = temp.loc[indexes]
         cutoff_cycle = max(traj_data['cycle']) - sequence_length - window_size + 1
 
