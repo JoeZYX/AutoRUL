@@ -5,8 +5,8 @@ import numpy as np
 import pandas as pd
 import tensorflow.keras as keras
 from sklearn import preprocessing
-from tsfresh.feature_selection.significance_tests import (
-    target_real_feature_binary_test, target_real_feature_real_test)
+from tsfresh.feature_selection.significance_tests import (target_real_feature_binary_test,
+                                                          target_real_feature_real_test)
 
 
 def identify_and_remove_unique_columns(Dataframe):
@@ -29,10 +29,10 @@ def identify_and_remove_unique_columns(Dataframe):
         col = record_single_unique.loc[i, "feature"]
         _type = record_single_unique.loc[i, "type"]
         if _type == "real":
-            p_value = target_real_feature_real_test(Dataframe[col], Dataframe["RUL"])
+            p_value = target_real_feature_real_test(Dataframe[col], Dataframe["RUL_pw"])
         else:
             le = preprocessing.LabelEncoder()
-            p_value = target_real_feature_binary_test(pd.Series(le.fit_transform(Dataframe[col])), Dataframe["RUL"])
+            p_value = target_real_feature_binary_test(pd.Series(le.fit_transform(Dataframe[col])), Dataframe["RUL_pw"])
         if p_value > 0.05:
             unique_to_drop.append(col)
 
