@@ -71,18 +71,24 @@ class RemainingUsefulLife:
                 'rtf_id', 'cycle', 'setting1', 'setting2', 'setting3', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
                 's9', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21'
             ]
+            # train_FD = []
+            # test_FD = []
+            # RUL_FD = []
 
-            self.__train_FD = pd.read_table(f"./CMAPSSData/train_{train_fold_id[0]}.txt",
-                                            header=None,
-                                            delim_whitespace=True)
+            for fold_id in train_fold_id:
+                temp = pd.read_table(f"./CMAPSSData/train_{fold_id}.txt", header=None, delim_whitespace=True)
+                self.__train_FD = pd.concat([temp], ignore_index=True)
+
+            for fold_id in test_fold_id:
+                temp = pd.read_table(f"./CMAPSSData/test_{fold_id}.txt", header=None, delim_whitespace=True)
+                self.__test_FD = pd.concat([temp], ignore_index=True)
+
+            for fold_id in rul_fold_id:
+                temp = pd.read_table(f"./CMAPSSData/RUL_{fold_id}.txt", header=None, delim_whitespace=True)
+                self.__RUL_FD = pd.concat([temp], ignore_index=True)
+
             self.__train_FD.columns = column_name
-
-            self.__test_FD = pd.read_table(f"./CMAPSSData/test_{test_fold_id[0]}.txt",
-                                           header=None,
-                                           delim_whitespace=True)
             self.__test_FD.columns = column_name
-
-            self.__RUL_FD = pd.read_table(f"./CMAPSSData/RUL_{rul_fold_id[0]}.txt", header=None, delim_whitespace=True)
             self.__rtf_id = 'rtf_id'
             self.__compute_rul()
 
@@ -183,6 +189,7 @@ class RemainingUsefulLife:
 
         print(f"The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.")
 
+    def test(self) -> None:
         # Todo: Test function
         # Testing
         x_batch_test, y_batch_test = test_batch_generator(self.__test_FD,

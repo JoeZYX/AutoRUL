@@ -5,4 +5,6 @@ from rul import RemainingUsefulLife
 if __name__ == '__main__':
     #print(os.listdir('src'))
     rul = RemainingUsefulLife("CMAPSSData")
-    rul.auto_rul(["FD002"], ["FD002"], ["FD002"])
+    rul.auto_rul(["FD001", "FD002", "FD003", "FD004"], ["FD001", "FD002", "FD003", "FD004"],
+                 ["FD001", "FD002", "FD003", "FD004"])
+    rul.test()
