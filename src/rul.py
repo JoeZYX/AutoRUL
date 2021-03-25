@@ -189,7 +189,9 @@ class RemainingUsefulLife:
 
         print(f"The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.")
 
+    # Export to csv: rtf_id, timestamp/cycle, prediction
     def test(self) -> None:
+
         # Todo: Test function
         # Testing
         x_batch_test, y_batch_test = test_batch_generator(self.__test_FD,
