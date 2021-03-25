@@ -98,14 +98,14 @@ class RemainingUsefulLife:
                                    sep=',',
                                    decimal='.',
                                    encoding='ISO-8859-1')
-                self.__train_FD = self.__train_FD.append(temp)
+                self.__train_FD = pd.concat([temp], ignore_index=True)
 
             for fold_id in test_fold_id:
                 temp = pd.read_csv(f'AL/FeedbackBoost/Data/{self.__data_id}/{fold_id}.csv',
                                    sep=',',
                                    decimal='.',
                                    encoding='ISO-8859-1')
-                self.__test_FD = self.__test_FD.append(temp)
+                self.__test_FD = pd.concat([temp], ignore_index=True)
 
         col_to_drop = identify_and_remove_unique_columns(self.__train_FD)
         self.__train_FD.drop(col_to_drop, axis=1, inplace=True)
