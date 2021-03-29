@@ -62,6 +62,7 @@ class RemainingUsefulLife:
         self.__y_batch = None
         self.__number_of_sensors = None
         self.__log_dir = None
+        self.__prediction = pd.DataFrame()
 
     # Todo: Move CMAPSSData
     # AL/FeedbackBoost/Data/CMAPs oder waterpump .../filename
@@ -171,7 +172,7 @@ class RemainingUsefulLife:
             self.__X_batch,
             self.__y_batch,
             batch_size=15,
-            epochs=10,  # 30 original value
+            epochs=30,  # 30 original value
             callbacks=[  # logging,
                 checkpoint, reduce_lr, early_stopping
             ],
@@ -189,27 +190,80 @@ class RemainingUsefulLife:
 
         print(f"The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.")
 
-    # Export to csv: rtf_id, timestamp/cycle, prediction
     def test(self) -> None:
+        # 16
+        print(len(self.__test_FD))
 
-        # Todo: Test function
-        # Testing
-        x_batch_test, y_batch_test = test_batch_generator(self.__test_FD,
-                                                          sequence_length=self.__sequence_length,
-                                                          window_size=self.__window_size)
-        x_batch_test = np.expand_dims(x_batch_test, axis=4)
+        for i in range(len(self.__test_FD)):
+            try:
+                x_batch_test, y_batch_test = test_batch_generator(self.__test_FD,
+                                                                  sequence_length=self.__sequence_length,
+                                                                  window_size=self.__window_size)
+            except Exception:
+                break
 
-        # model_id = 4
-        # self.__model_id = 4
-        # model_weights = f'trained_models/{self.__data_id}/best_model_{self.__data_id}_{self.__model_id}.h5'
-        # if not os.path.exists(model_weights):
-        #     print("no such a weight file")
-        # else:
-        #     model.load_weights(model_weights)
+            x_batch_test = np.expand_dims(x_batch_test, axis=4)
 
-        y_batch_pred_test = self.__model.predict(x_batch_test)
-        rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
-        print(f"The RMSE on test dataset {self.__data_id} is {rmse_on_test}.")
+            # model_id = 4
+            # self.__model_id = 4
+            # model_weights = f'trained_models/{self.__data_id}/best_model_{self.__data_id}_{self.__model_id}.h5'
+            # if not os.path.exists(model_weights):
+            #     print("no such a weight file")
+            # else:
+            #     model.load_weights(model_weights)
+
+            y_batch_pred_test = self.__model.predict(x_batch_test)
+            rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
+            print(f"The RMSE on test dataset {self.__data_id} is {rmse_on_test}.")
+
+            # Use indices instead, use min length of rtf_id as min size -> rtf_id - window_size
+            remove = []  #
+            not_removed_id = []
+            id_count = 0
+            rtf_id = self.__test_FD['rtf_id'].tolist()
+            for idx in range(1, len(rtf_id)):
+                id_count += 1
+
+                if id_count >= self.__window_size and rtf_id[idx] > rtf_id[idx - 1]:
+                    id_count = 0
+                    remove.append(idx - 1)
+
+                elif id_count >= self.__window_size and idx == len(rtf_id) - 1:
+                    remove.append(idx)
+
+                elif ((id_count < self.__window_size and rtf_id[idx] > rtf_id[idx - 1])
+                      or (id_count < self.__window_size and idx == len(rtf_id) - 1)):
+                    not_removed_id.append(idx)
+
+            cycle = [self.__test_FD.iloc[idx]['cycle'] for idx in remove]
+
+            print(not_removed_id)
+
+            to_remove = []
+            for idx in range(len(not_removed_id)):
+                to_remove.append(self.__test_FD['rtf_id'].iloc[idx])
+
+            self.__test_FD.drop(self.__test_FD.index[remove], inplace=True)
+            print(i)
+            print(len(self.__test_FD))
+
+            for idx in to_remove:
+                self.__test_FD.drop(self.__test_FD[self.__test_FD['rtf_id'] == idx].index, inplace=True)
+
+            y_batch_pred_test = np.delete(y_batch_pred_test, not_removed_id)
+
+            print(f'cycle: {len(cycle)}')
+            print(f'id: {len(set(self.__test_FD["rtf_id"]))}')
+            print(f'pred: {len(y_batch_pred_test)}')
+
+            data = {
+                'rtf_id': list(set(self.__test_FD['rtf_id'])),
+                'cycle': cycle,
+                'Predicted RUL': list(y_batch_pred_test)
+            }
+            results = pd.DataFrame(data=data)
+
+            self.__prediction = self.__prediction.append(results)
 
     def __compute_rul(self) -> None:
         id = self.__rtf_id
@@ -251,3 +305,10 @@ class RemainingUsefulLife:
             rul.extend(kink_RUL)
 
         self.__test_FD["RUL_pw"] = rul
+
+    def export_to_csv(self, test_fold_id: str) -> None:
+        """Exports results to csv containing: rtf_id, timestamp/cycle, prediction."""
+        self.__prediction.to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv')
+
+    def get_results(self):
+        return self.__prediction.copy(deep=True)
