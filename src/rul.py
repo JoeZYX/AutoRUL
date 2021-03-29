@@ -172,7 +172,7 @@ class RemainingUsefulLife:
             self.__X_batch,
             self.__y_batch,
             batch_size=15,
-            epochs=30,  # 30 original value
+            epochs=1,  # 30 original value
             callbacks=[  # logging,
                 checkpoint, reduce_lr, early_stopping
             ],
@@ -308,8 +308,8 @@ class RemainingUsefulLife:
 
     def export_to_csv(self, test_fold_id: str) -> None:
         """Exports results to csv containing: rtf_id, timestamp/cycle, prediction."""
-        self.__prediction = self.__prediction.groupby('rtf_id').sort_values('cycle')
-        self.__prediction.to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv')
+        temp = self.__prediction.sort_values('cycle').groupby('rtf_id')
+        pd.DataFrame(temp).to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv', index=False)
 
     def get_results(self):
         return self.__prediction.copy(deep=True)
