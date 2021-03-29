@@ -308,6 +308,7 @@ class RemainingUsefulLife:
 
     def export_to_csv(self, test_fold_id: str) -> None:
         """Exports results to csv containing: rtf_id, timestamp/cycle, prediction."""
+        self.__prediction = self.__prediction.groupby('rtf_id').sort_values('cycle')
         self.__prediction.to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv')
 
     def get_results(self):
