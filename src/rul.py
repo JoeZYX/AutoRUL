@@ -172,7 +172,7 @@ class RemainingUsefulLife:
             self.__X_batch,
             self.__y_batch,
             batch_size=15,
-            epochs=1,  # 30 original value
+            epochs=30,  # 30 original value
             callbacks=[  # logging,
                 checkpoint, reduce_lr, early_stopping
             ],
