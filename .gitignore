@@ -1,3 +1,4 @@
 **/.idea
 **/local
 **/logs
+.vscode/settings.json
