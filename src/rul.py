@@ -263,7 +263,7 @@ class RemainingUsefulLife:
             }
             results = pd.DataFrame(data=data)
 
-            self.__prediction = self.__prediction.append(results)
+            self.__prediction = pd.concat([self.__prediction, results])
 
     def __compute_rul(self) -> None:
         id = self.__rtf_id
@@ -309,7 +309,12 @@ class RemainingUsefulLife:
     def export_to_csv(self, test_fold_id: str) -> None:
         """Exports results to csv containing: rtf_id, timestamp/cycle, prediction."""
         temp = self.__prediction.sort_values('cycle').groupby('rtf_id')
-        pd.DataFrame(temp).to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv', index=False)
+        if self.__data_id.lower() == 'cmapssdata':
+            pd.DataFrame(temp).to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv', index=False, header=False)
+        else:
+            pd.DataFrame(temp).to_csv(f'AL/FeedbackBoost/Data/{self.__data_id}/{test_fold_id}.csv',
+                                      index=False,
+                                      header=False)
 
     def get_results(self):
         return self.__prediction.copy(deep=True)

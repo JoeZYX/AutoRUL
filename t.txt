@@ -1,0 +1,19 @@
+Results DataFrame
+
+Last Timestamp
+index, rtf_id
+0    , 1
+1    , 2
+...
+
+Last Timestamp - 1
+index, rtf_id
+0    , 1
+1    , 2
+...
+
+Last Timestamp - 2
+index, rtf_id
+0    , 1
+1    , 2
+...
