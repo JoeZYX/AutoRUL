@@ -95,17 +95,11 @@ class RemainingUsefulLife:
 
         else:
             for fold_id in train_fold_id:
-                temp = pd.read_csv(f'AL/FeedbackBoost/Data/{self.__data_id}/{fold_id}.csv',
-                                   sep=',',
-                                   decimal='.',
-                                   encoding='ISO-8859-1')
+                temp = pd.read_csv(f'./TurbofanData/train_{fold_id}.csv', sep=',', decimal='.', encoding='ISO-8859-1')
                 self.__train_FD = pd.concat([temp], ignore_index=True)
 
             for fold_id in test_fold_id:
-                temp = pd.read_csv(f'AL/FeedbackBoost/Data/{self.__data_id}/{fold_id}.csv',
-                                   sep=',',
-                                   decimal='.',
-                                   encoding='ISO-8859-1')
+                temp = pd.read_csv(f'./TurbofanData/test_{fold_id}.csv', sep=',', decimal='.', encoding='ISO-8859-1')
                 self.__test_FD = pd.concat([temp], ignore_index=True)
 
                 self.__train_FD.drop(self.__non_features, axis=1, inplace=True)
@@ -278,7 +272,7 @@ class RemainingUsefulLife:
         if self.__data_id.lower() == 'cmapssdata':
             self.__prediction.to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv', index=False)
         else:
-            self.__prediction.to_csv(f'AL/FeedbackBoost/Data/{self.__data_id}/{test_fold_id}.csv', index=False)
+            self.__prediction.to_csv(f'./TurbofanData/RUL_pred_{test_fold_id}.csv', index=False)
 
     def get_results(self):
         return self.__prediction.copy(deep=True)
