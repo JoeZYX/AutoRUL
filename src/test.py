@@ -3,9 +3,12 @@
 from rul import RemainingUsefulLife
 
 if __name__ == '__main__':
-    #print(os.listdir('src'))
-    rul = RemainingUsefulLife("CMAPSSData")
-    rul.auto_rul(["FD004"], ["FD004"], ["FD004"])
-    rul.test()
-    print(rul.get_results())
-    rul.export_to_csv('FD004')
+    i_values = ['10', '70', '130', '150']
+    s = "FD004"
+    for i in i_values:
+        si = s + "_WT_" + i
+        rul = RemainingUsefulLife("CMAPSSData")
+        rul.auto_rul([s], [si], [si])
+        rul.test()
+        print(rul.get_results())
+        rul.export_to_csv(si)

@@ -56,6 +56,7 @@ class RemainingUsefulLife:
         self.__train_FD = pd.DataFrame()
         self.__test_FD = pd.DataFrame()
         self.__original_data = original_data
+        self.__round = round
 
         # Only for CMAPSSData
         self.__RUL_FD = None
@@ -68,7 +69,11 @@ class RemainingUsefulLife:
 
     # Todo: Move CMAPSSData
     # AL/FeedbackBoost/Data/CMAPs oder waterpump .../filename
-    def auto_rul(self, train_fold_id: List[str], test_fold_id: List[str], rul_fold_id: Optional[List[str]]) -> None:
+    def auto_rul(self,
+                 train_fold_id: List[str],
+                 test_fold_id: List[str],
+                 rul_fold_id: Optional[List[str]],
+                 round: int = 0) -> None:
         column_name = [
             'rtf_id', 'cycle', 'setting1', 'setting2', 'setting3', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9',
             's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21'
@@ -172,27 +177,28 @@ class RemainingUsefulLife:
         reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
-        self.__model.fit(
-            self.__X_batch,
-            self.__y_batch,
-            batch_size=15,
-            epochs=30,  # 30 original value
-            callbacks=[  # logging,
-                checkpoint, reduce_lr, early_stopping
-            ],
-            validation_split=0.075)
-        self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
+        if round == 0:
+            self.__model.fit(
+                self.__X_batch,
+                self.__y_batch,
+                batch_size=15,
+                epochs=30,  # 30 original value
+                callbacks=[  # logging,
+                    checkpoint, reduce_lr, early_stopping
+                ],
+                validation_split=0.075)
+            self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
 
-        modellist = os.listdir(self.__log_dir)
-        modellist = [file for file in modellist if "val_loss" in file]
-        self.__model.load_weights(self.__log_dir + modellist[-1])
+            modellist = os.listdir(self.__log_dir)
+            modellist = [file for file in modellist if "val_loss" in file]
+            self.__model.load_weights(self.__log_dir + modellist[-1])
 
-        y_batch_pred = self.__model.predict(self.__X_batch)
-        y_batch_pred = y_batch_pred.reshape(y_batch_pred.shape[0], y_batch_pred.shape[1])
-        y_batch_reshape = self.__y_batch.reshape(self.__y_batch.shape[0], self.__y_batch.shape[1])
-        rmse_on_train = np.sqrt(mean_squared_error(y_batch_pred, y_batch_reshape))
+            y_batch_pred = self.__model.predict(self.__X_batch)
+            y_batch_pred = y_batch_pred.reshape(y_batch_pred.shape[0], y_batch_pred.shape[1])
+            y_batch_reshape = self.__y_batch.reshape(self.__y_batch.shape[0], self.__y_batch.shape[1])
+            rmse_on_train = np.sqrt(mean_squared_error(y_batch_pred, y_batch_reshape))
 
-        print(f"The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.")
+            print(f"The RMSE on Training dataset {self.__data_id} is {rmse_on_train}.")
 
     def test(self) -> None:
 
