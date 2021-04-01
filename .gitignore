@@ -1,4 +1,6 @@
 **/.idea
 **/local
 **/logs
+#Mac Finder desktop services
+.DS_Store
 .vscode/settings.json
