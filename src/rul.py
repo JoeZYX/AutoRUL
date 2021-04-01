@@ -39,7 +39,8 @@ class RemainingUsefulLife:
                  non_features: List[str] = None,
                  max_life: int = 120,
                  sequence_length: int = 5,
-                 window_size: int = 16) -> None:
+                 window_size: int = 16,
+                 original_data: bool = False) -> None:
         """Inits RemainingUsefulLife."""
 
         # Folder name
@@ -54,6 +55,7 @@ class RemainingUsefulLife:
         self.__window_size = window_size
         self.__train_FD = pd.DataFrame()
         self.__test_FD = pd.DataFrame()
+        self.__original_data = original_data
 
         # Only for CMAPSSData
         self.__RUL_FD = None
@@ -67,15 +69,32 @@ class RemainingUsefulLife:
     # Todo: Move CMAPSSData
     # AL/FeedbackBoost/Data/CMAPs oder waterpump .../filename
     def auto_rul(self, train_fold_id: List[str], test_fold_id: List[str], rul_fold_id: Optional[List[str]]) -> None:
-        if self.__data_id.lower() == 'cmapssdata':
-            column_name = [
-                'rtf_id', 'cycle', 'setting1', 'setting2', 'setting3', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8',
-                's9', 's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21'
-            ]
-            # train_FD = []
-            # test_FD = []
-            # RUL_FD = []
+        column_name = [
+            'rtf_id', 'cycle', 'setting1', 'setting2', 'setting3', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9',
+            's10', 's11', 's12', 's13', 's14', 's15', 's16', 's17', 's18', 's19', 's20', 's21'
+        ]
+        # train_FD = []
+        # test_FD = []
+        # RUL_FD = []
+        if self.__original_data:
+            for fold_id in train_fold_id:
+                temp = pd.read_table(f"./CMAPSSData/original/train_{fold_id}.txt", header=None, delim_whitespace=True)
+                self.__train_FD = pd.concat([temp], ignore_index=True)
 
+            for fold_id in test_fold_id:
+                temp = pd.read_table(f"./CMAPSSData/original/test_{fold_id}.txt", header=None, delim_whitespace=True)
+                self.__test_FD = pd.concat([temp], ignore_index=True)
+
+            for fold_id in rul_fold_id:
+                temp = pd.read_table(f"./CMAPSSData/original/RUL_{fold_id}.txt", header=None, delim_whitespace=True)
+                self.__RUL_FD = pd.concat([temp], ignore_index=True)
+
+            self.__train_FD.columns = column_name
+            self.__test_FD.columns = column_name
+            self.__rtf_id = 'rtf_id'
+            self.__compute_rul()
+
+        else:
             for fold_id in train_fold_id:
                 temp = pd.read_table(f"./CMAPSSData/train_{fold_id}.txt", header=None, delim_whitespace=True)
                 self.__train_FD = pd.concat([temp], ignore_index=True)
@@ -92,18 +111,6 @@ class RemainingUsefulLife:
             self.__test_FD.columns = column_name
             self.__rtf_id = 'rtf_id'
             self.__compute_rul()
-
-        else:
-            for fold_id in train_fold_id:
-                temp = pd.read_csv(f'./TurbofanData/train_{fold_id}.csv', sep=',', decimal='.', encoding='ISO-8859-1')
-                self.__train_FD = pd.concat([temp], ignore_index=True)
-
-            for fold_id in test_fold_id:
-                temp = pd.read_csv(f'./TurbofanData/test_{fold_id}.csv', sep=',', decimal='.', encoding='ISO-8859-1')
-                self.__test_FD = pd.concat([temp], ignore_index=True)
-
-                self.__train_FD.drop(self.__non_features, axis=1, inplace=True)
-                self.__test_FD.drop(self.__non_features, axis=1, inplace=True)
 
         col_to_drop = identify_and_remove_unique_columns(self.__train_FD)
         self.__train_FD.drop(col_to_drop, axis=1, inplace=True)
@@ -269,10 +276,10 @@ class RemainingUsefulLife:
 
     def export_to_csv(self, test_fold_id: str) -> None:
         """Exports results to csv containing: rtf_id, timestamp/cycle, prediction."""
-        if self.__data_id.lower() == 'cmapssdata':
-            self.__prediction.to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv', index=False)
+        if self.__original_data:
+            self.__prediction.to_csv(f'./CMAPSSData/original/RUL_pred_{test_fold_id}.csv', index=False)
         else:
-            self.__prediction.to_csv(f'./TurbofanData/RUL_pred_{test_fold_id}.csv', index=False)
+            self.__prediction.to_csv(f'./CMAPSSData/RUL_pred_{test_fold_id}.csv', index=False)
 
     def get_results(self):
         return self.__prediction.copy(deep=True)
