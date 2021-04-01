@@ -4,3 +4,5 @@
 #Mac Finder desktop services
 .DS_Store
 .vscode/settings.json
+#Valentin local testing
+src/test_efficiently.py
