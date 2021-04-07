@@ -36,7 +36,6 @@ class RemainingUsefulLife:
     """
     def __init__(self,
                  data_id: str,
-                 non_features: List[str] = None,
                  max_life: int = 120,
                  sequence_length: int = 5,
                  window_size: int = 16,
@@ -48,22 +47,18 @@ class RemainingUsefulLife:
         self.__rtf_id = None
         # self.__cycle = self.__data['cycle']
         self.__max_life = max_life
-        self.__non_features = [] or non_features
         self.__model = None
-        self.__model_id = None
         self.__sequence_length = sequence_length
         self.__window_size = window_size
         self.__train_FD = pd.DataFrame()
         self.__test_FD = pd.DataFrame()
         self.__original_data = original_data
-        self.__round = round
 
         # Only for CMAPSSData
         self.__RUL_FD = None
 
         self.__X_batch = None
         self.__y_batch = None
-        self.__number_of_sensors = None
         self.__log_dir = None
         self.__prediction = pd.DataFrame()
 
