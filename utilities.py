@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 import math
 import numpy as np
 
-def identify_and_remove_unique_columns(Dataframe):
+def identify_and_remove_unique_columns(Dataframe, rtf_id = "engine_id", cycle_column_name = "cycle"):
     Dataframe = Dataframe.copy()
-    del Dataframe["engine_id"]
-    del Dataframe["cycle"]
+    del Dataframe[rtf_id]
+    del Dataframe[cycle_column_name]
     
  
     unique_counts = Dataframe.nunique()
