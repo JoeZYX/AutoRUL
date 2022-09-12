@@ -16,6 +16,7 @@ from ECLSTM import ECLSTM1D
 from ECLSTM import check_the_config_valid
 from ECLSTM import build_the_model
 
+from parameters import architecture_parameters
 
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
@@ -31,7 +32,7 @@ class RemainingUsefulLife:
                  test_rul, 
                  max_life: int = 2*8*6, 
                  sequence_length: int = 5, 
-                 window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant') -> None:
+                 window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 2) -> None:
         self.__train_df = train_df
         self.__test_df = test_df
         self.__test_rul = test_rul
@@ -41,6 +42,8 @@ class RemainingUsefulLife:
         self.__rtf_id = rtf_id
         self.__cycle_column_name = cycle_column_name
         self.__data_id = data_id
+        self.__epochs = epochs
+
 
     def compute_piecewise_linear_rul(self):
         id= self.__rtf_id
@@ -136,5 +139,79 @@ class RemainingUsefulLife:
 
 
 
+    def batch_generation(self): 
+        # Prepare the training set according to the  window size and sequence_length
+        self.__x_batch, self.__y_batch =batch_generator(self.train_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size)
+        self.__x_batch = np.expand_dims(self.__x_batch, axis=4)
+        self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
+        self.__number_of_sensor = self.__x_batch.shape[-2]
 
+    def train_model(self): 
+        valid = check_the_config_valid(architecture_parameters ,self.__window_size,self.__number_of_sensor)
+        if valid:
+            self.__model = build_the_model(architecture_parameters, self.__sequence_length, self.__window_size, self.__number_of_sensor)
+        else: 
+            print("invalid configuration")
+        input_data = tf.keras.layers.Input(shape=(self.__sequence_length, self.__window_size, self.__number_of_sensor,1))
+        out = self.__model(input_data)
+        print(self.__model.summary())
+
+        dateTimeObj = datetime.now()
+
+        self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id,
+                                                    dateTimeObj.year,
+                                                    dateTimeObj.month,
+                                                    dateTimeObj.day,
+                                                    dateTimeObj.hour,
+                                                    dateTimeObj.minute,
+                                                    dateTimeObj.second)
+
+
+        os.makedirs(self.__log_dir)
+
+        checkpoint = ModelCheckpoint(self.__log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
+                                    monitor='val_loss', save_weights_only=True, save_best_only=True)
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
+        early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
+
+
+        # if you have enough time budget, you can set a large epochs and large patience
+
+         
+        self.__model.fit(self.__x_batch,self.__y_batch, 
+                batch_size=15, 
+                epochs=self.__epochs, 
+                callbacks=[#logging, 
+                            checkpoint, 
+                            reduce_lr, 
+                            early_stopping],
+                validation_split=0.075)
+        self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
+
+
+    def evaluate(self):
+        x_batch_test, y_batch_test =  test_batch_generator(self.test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size)
+        x_batch_test = np.expand_dims(x_batch_test, axis=4)
+
+        modellist = os.listdir(self.__log_dir)
+        modellist = [file for file in modellist if "val_loss" in file]
+
+        self.__model.load_weights(self.__log_dir+modellist[-1])
+    
+        # performance on training dataset
+        y_batch_pred = self.__model.predict(self.__x_batch)
+
+        y_batch_pred = y_batch_pred.reshape(y_batch_pred.shape[0], y_batch_pred.shape[1])
+        y_batch_reshape = self.__y_batch.reshape(self.__y_batch.shape[0], self.__y_batch.shape[1])
+        rmse_on_train = np.sqrt(mean_squared_error(y_batch_pred, y_batch_reshape))
+
+        print("The RMSE on Training dataset {} is {}.".format(self.__data_id,rmse_on_train))
+
+        # performance on test dataset
+        y_batch_pred_test = self.__model.predict(x_batch_test)
+        rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
+        print("The RMSE on test dataset {} is {}.".format(self.__data_id,rmse_on_test))
+
+    
         
+   
