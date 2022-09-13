@@ -30,7 +30,7 @@ class RemainingUsefulLife:
                  train_df, 
                  test_df, 
                  test_rul, 
-                 max_life: int = 2*8*6, 
+                 max_life: int = 2*8*60, 
                  sequence_length: int = 5, 
                  window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 2) -> None:
         self.__train_df = train_df
@@ -95,28 +95,26 @@ class RemainingUsefulLife:
 
            # feature extension
     def feature_extension(self): 
+
         col_to_drop = identify_and_remove_unique_columns(self.__train_df, rtf_id = self.__rtf_id, cycle_column_name = self.__cycle_column_name)
-        self.train_data_with_piecewise_rul = self.__train_df.drop(col_to_drop,axis = 1)
-        self.test_data_with_piecewise_rul = self.__test_df.drop(col_to_drop,axis = 1)
+        self.__train_data_with_piecewise_rul = self.__train_df.drop(col_to_drop,axis = 1)
+        self.__test_data_with_piecewise_rul = self.__test_df.drop(col_to_drop,axis = 1)
     
     def standort_normalization(self):
-        mean = self.train_data_with_piecewise_rul.iloc[:, 2:-1].mean()
-        std = self.train_data_with_piecewise_rul.iloc[:, 2:-1].std()
+        mean = self.__train_data_with_piecewise_rul.iloc[:, 2:-1].mean()
+        std = self.__train_data_with_piecewise_rul.iloc[:, 2:-1].std()
         std.replace(0, 1, inplace=True)
         # training dataset
-        self.train_data_with_piecewise_rul.iloc[:, 2:-1] = (self.train_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
+        self.__train_data_with_piecewise_rul.iloc[:, 2:-1] = (self.__train_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
 
             #Testing dataset
-        self.test_data_with_piecewise_rul.iloc[:, 2:-1] = (self.test_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
+        self.__test_data_with_piecewise_rul.iloc[:, 2:-1] = (self.__test_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
 
 
     def plot_rul(self):
-        self.compute_piecewise_linear_rul()
-        self.feature_extension()
-        self.standort_normalization()
 
-        training_data = self.train_data_with_piecewise_rul.values
-        testing_data = self.test_data_with_piecewise_rul.values
+        training_data = self.__train_data_with_piecewise_rul.values
+        testing_data = self.__test_data_with_piecewise_rul.values
 
         x_train = training_data[:, 2:-1] # train data without "rul, rtf_id, cycle" columns
         y_train = training_data[:, -1] # RUL per cycle
@@ -141,7 +139,7 @@ class RemainingUsefulLife:
 
     def batch_generation(self): 
         # Prepare the training set according to the  window size and sequence_length
-        self.__x_batch, self.__y_batch =batch_generator(self.train_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size)
+        self.__x_batch, self.__y_batch =batch_generator(self.__train_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size)
         self.__x_batch = np.expand_dims(self.__x_batch, axis=4)
         self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
         self.__number_of_sensor = self.__x_batch.shape[-2]
@@ -190,7 +188,7 @@ class RemainingUsefulLife:
 
 
     def evaluate(self):
-        x_batch_test, y_batch_test =  test_batch_generator(self.test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size)
+        x_batch_test, y_batch_test =  test_batch_generator(self.__test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size)
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
 
         modellist = os.listdir(self.__log_dir)
@@ -212,6 +210,15 @@ class RemainingUsefulLife:
         rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
         print("The RMSE on test dataset {} is {}.".format(self.__data_id,rmse_on_test))
 
+    def auto_rul(self): 
+        RemainingUsefulLife.compute_piecewise_linear_rul(self)
+        RemainingUsefulLife.feature_extension(self)
+        RemainingUsefulLife.standort_normalization(self)
+        RemainingUsefulLife.plot_rul(self)
+        RemainingUsefulLife.batch_generation(self)
+        RemainingUsefulLife.train_model(self)
+        RemainingUsefulLife.evaluate(self)
+        
     
         
    
