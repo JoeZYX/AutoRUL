@@ -67,12 +67,11 @@ class RemainingUsefulLife:
 
         rul = []
         # replacement_mapping_dict needs to be automated.
-        if self.__data_id == 'kaggel_plant':
-            replacement_mapping_dict = {             # replacing the ids with chronoligcal 1,2,3... since the code in autorul assumes this 
-                15: 1,
-                16: 2
-            }
-            self.__test_df[id] = self.__test_df[id].replace(replacement_mapping_dict)
+        replacement_mapping_dict = {}
+        for i in range(len(self.__test_df[self.__rtf_id].unique())):
+            replacement_mapping_dict[self.__test_df[self.__rtf_id].unique()[i]] = i + 1       # replacing the ids with chronoligcal 1,2,3... since the code in autorul assumes this 
+            
+        self.__test_df[id] = self.__test_df[id].replace(replacement_mapping_dict)
 
         for _id_test in set(self.__test_df[id]):      
             true_rul = int(self.__test_rul.iloc[_id_test - 1])
@@ -100,7 +99,7 @@ class RemainingUsefulLife:
         self.__train_data_with_piecewise_rul = self.__train_df.drop(col_to_drop,axis = 1)
         self.__test_data_with_piecewise_rul = self.__test_df.drop(col_to_drop,axis = 1)
     
-    def standort_normalization(self):
+    def standard_normalization(self):
         mean = self.__train_data_with_piecewise_rul.iloc[:, 2:-1].mean()
         std = self.__train_data_with_piecewise_rul.iloc[:, 2:-1].std()
         std.replace(0, 1, inplace=True)
@@ -109,7 +108,7 @@ class RemainingUsefulLife:
 
             #Testing dataset
         self.__test_data_with_piecewise_rul.iloc[:, 2:-1] = (self.__test_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
-
+        
 
     def plot_rul(self):
 
@@ -213,7 +212,7 @@ class RemainingUsefulLife:
     def auto_rul(self): 
         RemainingUsefulLife.compute_piecewise_linear_rul(self)
         RemainingUsefulLife.feature_extension(self)
-        RemainingUsefulLife.standort_normalization(self)
+        RemainingUsefulLife.standard_normalization(self)
         RemainingUsefulLife.plot_rul(self)
         RemainingUsefulLife.batch_generation(self)
         RemainingUsefulLife.train_model(self)
