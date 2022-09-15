@@ -100,21 +100,38 @@ class RemainingUsefulLife:
         self.__test_data_with_piecewise_rul = self.__test_df.drop(col_to_drop,axis = 1)
     
     def standard_normalization(self):
-        mean = self.__train_data_with_piecewise_rul.iloc[:, 2:-1].mean()
-        std = self.__train_data_with_piecewise_rul.iloc[:, 2:-1].std()
+        # normalizing the training feautures
+        self.__train_features = self.__train_data_with_piecewise_rul.loc[:,~self.__train_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, 'RUL'])]
+        mean = self.__train_features.mean()
+        std = self.__train_features.std()
         std.replace(0, 1, inplace=True)
         # training dataset
-        self.__train_data_with_piecewise_rul.iloc[:, 2:-1] = (self.__train_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
-
+        self.__train_features = (self.__train_features - mean) / std
+        # adding RUL and cycle columns back to the normalized features
+        self.__train_features.loc[:, [self.__rtf_id ,self.__cycle_column_name, 'RUL']] = self.__train_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name, 'RUL']]
+        self.__train_data_with_piecewise_rul = self.__train_features
+        rtf_id_column = self.__train_data_with_piecewise_rul.pop(self.__rtf_id)
+        cycle_column = self.__train_data_with_piecewise_rul.pop(self.__cycle_column_name)
+        self.__train_data_with_piecewise_rul.insert(0, self.__rtf_id, rtf_id_column)
+        self.__train_data_with_piecewise_rul.insert(1,self.__cycle_column_name, cycle_column)
             #Testing dataset
-        self.__test_data_with_piecewise_rul.iloc[:, 2:-1] = (self.__test_data_with_piecewise_rul.iloc[:, 2:-1] - mean) / std
-        
+        self.__test_features = self.__test_data_with_piecewise_rul.loc[:,~self.__test_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, 'RUL'])]
+
+        self.__test_features = (self.__test_features - mean) / std
+        self.__test_features.loc[:, [self.__rtf_id ,self.__cycle_column_name, 'RUL']] = self.__test_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name, 'RUL']]
+
+
+        self.__test_data_with_piecewise_rul = self.__test_features
+        rtf_id_column = self.__test_data_with_piecewise_rul.pop(self.__rtf_id)
+        cycle_column = self.__test_data_with_piecewise_rul.pop(self.__cycle_column_name)
+        self.__test_data_with_piecewise_rul.insert(0, self.__rtf_id, rtf_id_column)
+        self.__test_data_with_piecewise_rul.insert(1,self.__cycle_column_name, cycle_column)
+
 
     def plot_rul(self):
 
         training_data = self.__train_data_with_piecewise_rul.values
         testing_data = self.__test_data_with_piecewise_rul.values
-
         x_train = training_data[:, 2:-1] # train data without "rul, rtf_id, cycle" columns
         y_train = training_data[:, -1] # RUL per cycle
         print("training", x_train.shape, y_train.shape)
