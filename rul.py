@@ -1,4 +1,5 @@
 from msilib import sequence
+from random import triangular
 import warnings 
 warnings.filterwarnings("ignore")
 import pandas as pd
@@ -32,7 +33,7 @@ class RemainingUsefulLife:
                  test_rul, 
                  max_life: int = 2*8*60, 
                  sequence_length: int = 5, 
-                 window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 2) -> None:
+                 window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 2, path_to_trained_model: str = None) -> None:
         self.__train_df = train_df
         self.__test_df = test_df
         self.__test_rul = test_rul
@@ -43,6 +44,7 @@ class RemainingUsefulLife:
         self.__cycle_column_name = cycle_column_name
         self.__data_id = data_id
         self.__epochs = epochs
+        self.__log_dir = path_to_trained_model
 
 
     def compute_piecewise_linear_rul(self):
@@ -114,12 +116,13 @@ class RemainingUsefulLife:
         cycle_column = self.__train_data_with_piecewise_rul.pop(self.__cycle_column_name)
         self.__train_data_with_piecewise_rul.insert(0, self.__rtf_id, rtf_id_column)
         self.__train_data_with_piecewise_rul.insert(1,self.__cycle_column_name, cycle_column)
-            #Testing dataset
+
+
+        #Testing dataset
         self.__test_features = self.__test_data_with_piecewise_rul.loc[:,~self.__test_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, 'RUL'])]
 
         self.__test_features = (self.__test_features - mean) / std
         self.__test_features.loc[:, [self.__rtf_id ,self.__cycle_column_name, 'RUL']] = self.__test_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name, 'RUL']]
-
 
         self.__test_data_with_piecewise_rul = self.__test_features
         rtf_id_column = self.__test_data_with_piecewise_rul.pop(self.__rtf_id)
@@ -141,7 +144,7 @@ class RemainingUsefulLife:
         print("testing", x_test.shape, y_test.shape)
 
         plt.figure(figsize=(15,2))
-        plt.plot(y_train, label="train") # y_train[:500] contains cycle ruls for different engines
+        plt.plot(y_train, label="train") # y_train contains cycle ruls for different engines
         plt.legend()
         plt.figure(figsize=(15,2))
 
@@ -161,7 +164,8 @@ class RemainingUsefulLife:
         self.__number_of_sensor = self.__x_batch.shape[-2]
 
     def train_model(self): 
-        valid = check_the_config_valid(architecture_parameters ,self.__window_size,self.__number_of_sensor)
+
+        valid = check_the_config_valid(architecture_parameters,self.__window_size,self.__number_of_sensor)
         if valid:
             self.__model = build_the_model(architecture_parameters, self.__sequence_length, self.__window_size, self.__number_of_sensor)
         else: 
@@ -170,47 +174,58 @@ class RemainingUsefulLife:
         out = self.__model(input_data)
         print(self.__model.summary())
 
-        dateTimeObj = datetime.now()
+        if self.__log_dir is None:
+            dateTimeObj = datetime.now()
 
-        self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id,
-                                                    dateTimeObj.year,
-                                                    dateTimeObj.month,
-                                                    dateTimeObj.day,
-                                                    dateTimeObj.hour,
-                                                    dateTimeObj.minute,
-                                                    dateTimeObj.second)
+            self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id,
+                                                dateTimeObj.year,
+                                                dateTimeObj.month,
+                                                dateTimeObj.day,
+                                                dateTimeObj.hour,
+                                                dateTimeObj.minute,
+                                                dateTimeObj.second)
+            os.makedirs(self.__log_dir)
+            
 
-
-        os.makedirs(self.__log_dir)
-
-        checkpoint = ModelCheckpoint(self.__log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
-                                    monitor='val_loss', save_weights_only=True, save_best_only=True)
-        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
-        early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
+            checkpoint = ModelCheckpoint(self.__log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
+                                        monitor='val_loss', save_weights_only=True, save_best_only=True)
+            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
+            early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
 
         # if you have enough time budget, you can set a large epochs and large patience
 
          
-        self.__model.fit(self.__x_batch,self.__y_batch, 
-                batch_size=15, 
-                epochs=self.__epochs, 
-                callbacks=[#logging, 
-                            checkpoint, 
-                            reduce_lr, 
-                            early_stopping],
-                validation_split=0.075)
-        self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
+            self.__model.fit(self.__x_batch,self.__y_batch, 
+                    batch_size=15, 
+                    epochs=self.__epochs, 
+                    callbacks=[#logging, 
+                                checkpoint, 
+                                reduce_lr, 
+                                early_stopping],
+                    validation_split=0.075)
+            self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
+            self.__train_model = True # simple checker to check if a new model is being trained 
+        else: 
+            self.__train_model = False # if a given model is supposed to be executed 
 
 
     def evaluate(self):
         x_batch_test, y_batch_test =  test_batch_generator(self.__test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size)
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
-
-        modellist = os.listdir(self.__log_dir)
-        modellist = [file for file in modellist if "val_loss" in file]
-
-        self.__model.load_weights(self.__log_dir+modellist[-1])
+        # loading the weights of the current model which was just trained and saved
+        if self.__train_model == True: 
+            modellist = os.listdir(self.__log_dir)
+            modellist = [file for file in modellist if "val_loss" in file]
+            
+            self.__model.load_weights(self.__log_dir + modellist[-1])
+        # loading the weights of the given model (user input)
+        else:
+            model_weights = self.__log_dir
+            if not os.path.exists(model_weights):
+                print("no such a weight file")
+            else:
+                self.__model.load_weights(model_weights)
     
         # performance on training dataset
         y_batch_pred = self.__model.predict(self.__x_batch)
@@ -225,6 +240,7 @@ class RemainingUsefulLife:
         y_batch_pred_test = self.__model.predict(x_batch_test)
         rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
         print("The RMSE on test dataset {} is {}.".format(self.__data_id,rmse_on_test))
+        return y_batch_pred_test
 
     def auto_rul(self): 
         RemainingUsefulLife.compute_piecewise_linear_rul(self)
