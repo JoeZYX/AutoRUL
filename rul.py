@@ -145,20 +145,24 @@ class RemainingUsefulLife:
 
         plt.figure(figsize=(15,2))
         plt.plot(y_train, label="train") # y_train contains cycle ruls for different engines
+        plt.ylabel('RUL')
+        plt.title("Piecewise RUL for different RTF Ids")
         plt.legend()
         plt.figure(figsize=(15,2))
 
         plt.plot(y_test, label="test")
+        plt.ylabel('RUL')
+        plt.title("Piecewise RUL for different RTF Ids")
         plt.legend()
         plt.figure(figsize=(15,2))
         plt.plot(x_train) # one could also restrict the plot to x_train[190] for example
         plt.title("train: " + self.__data_id )
-
+        plt.show()
 
 
     def batch_generation(self): 
         # Prepare the training set according to the  window size and sequence_length
-        self.__x_batch, self.__y_batch =batch_generator(self.__train_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size)
+        self.__x_batch, self.__y_batch =batch_generator(self.__train_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size, rtf_id = self.__rtf_id, cycle_column_name = self.__cycle_column_name)
         self.__x_batch = np.expand_dims(self.__x_batch, axis=4)
         self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
         self.__number_of_sensor = self.__x_batch.shape[-2]
@@ -211,7 +215,7 @@ class RemainingUsefulLife:
 
 
     def evaluate(self):
-        x_batch_test, y_batch_test =  test_batch_generator(self.__test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size)
+        x_batch_test, y_batch_test =  test_batch_generator(self.__test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size, rtf_id= self.__rtf_id)
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
         # loading the weights of the current model which was just trained and saved
         if self.__train_model == True: 
@@ -240,7 +244,7 @@ class RemainingUsefulLife:
         y_batch_pred_test = self.__model.predict(x_batch_test)
         rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
         print("The RMSE on test dataset {} is {}.".format(self.__data_id,rmse_on_test))
-        return y_batch_pred_test
+        print(f"predicted RUl {y_batch_pred_test}")
 
     def auto_rul(self): 
         RemainingUsefulLife.compute_piecewise_linear_rul(self)
