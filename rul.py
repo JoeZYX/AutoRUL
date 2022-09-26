@@ -1,3 +1,4 @@
+from itertools import cycle
 from msilib import sequence
 from random import triangular
 import warnings 
@@ -30,13 +31,15 @@ class RemainingUsefulLife:
     def __init__(self,
                  train_df, 
                  test_df, 
-                 test_rul, 
+                 test_rul_per_rtf_id,
+                 train_rul_per_rtf_id = None,
                  max_life: int = 2*8*60, 
                  sequence_length: int = 5, 
                  window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 2, path_to_trained_model: str = None) -> None:
         self.__train_df = train_df
         self.__test_df = test_df
-        self.__test_rul = test_rul
+        self.__test_rul_per_rtf_id = test_rul_per_rtf_id
+        self.__train_rul_per_rtf_id = train_rul_per_rtf_id
         self.__max_life = max_life
         self.__sequence_length = sequence_length
         self.__window_size = window_size
@@ -47,39 +50,52 @@ class RemainingUsefulLife:
         self.__log_dir = path_to_trained_model
 
 
+
     def compute_piecewise_linear_rul(self):
         id= self.__rtf_id
-        rul = [] 
+        rul = []
+        datasets = [self.__train_df, self.__test_df]
+        for data in datasets: 
+            replacement_mapping_dict = {}
+            for i in range(len(data[self.__rtf_id].unique())):
+                replacement_mapping_dict[data[self.__rtf_id].unique()[i]] = i + 1       # replacing the ids with chronoligcal 1,2,3... since the code in autorul assumes this 
+            data[id] = data[id].replace(replacement_mapping_dict)
+
         for _id in set(self.__train_df[id]):
             trainFD_of_one_id =  self.__train_df[self.__train_df[id] == _id]
             cycle_list = trainFD_of_one_id[self.__cycle_column_name].tolist()
-            max_cycle = max(cycle_list)
-
+            for i in range(len(cycle_list)):  # in case some some cycles are missing, all of the cycles will be rearranged chronoligically from 1 up to len(cycle_list) 
+                cycle_list[i] = i + 1
+            if self.__train_rul_per_rtf_id is not None:
+                true_rul = int(self.__train_rul_per_rtf_id.iloc[_id - 1])
+                max_cycle = max(cycle_list) + true_rul
+            else:
+                max_cycle = max(cycle_list)
+            if self.__max_life > max_cycle: 
+                raise ValueError("Paramater max_life is too large. Try a smaller one")
             knee_point = max_cycle - self.__max_life
             kink_RUL = []
             for i in range(0, len(cycle_list)):
-                # 
                 if i < knee_point:
                     kink_RUL.append(self.__max_life)
                 else:
-                    tmp = max_cycle-i-1 # why substracting -1 as well?
+                    tmp = max_cycle-i-1 
                     kink_RUL.append(tmp)
             rul.extend(kink_RUL)
         self.__train_df["RUL"] = rul 
 
         rul = []
-        # replacement_mapping_dict needs to be automated.
-        replacement_mapping_dict = {}
-        for i in range(len(self.__test_df[self.__rtf_id].unique())):
-            replacement_mapping_dict[self.__test_df[self.__rtf_id].unique()[i]] = i + 1       # replacing the ids with chronoligcal 1,2,3... since the code in autorul assumes this 
-            
-        self.__test_df[id] = self.__test_df[id].replace(replacement_mapping_dict)
 
         for _id_test in set(self.__test_df[id]):      
-            true_rul = int(self.__test_rul.iloc[_id_test - 1])
+            true_rul = int(self.__test_rul_per_rtf_id.iloc[_id_test - 1])
             testFD_of_one_id =  self.__test_df[self.__test_df[id] == _id_test]
             cycle_list = testFD_of_one_id[self.__cycle_column_name].tolist()
+            for i in range(len(cycle_list)):  # in case some some cycles are missing, all of the cycles will be rearranged chronoligically from 1 up to len(cycle_list) 
+                cycle_list[i] = i + 1
             max_cycle = max(cycle_list) + true_rul
+            if self.__max_life > max_cycle: 
+                raise ValueError("Paramater max_life is too large. Try a smaller one")
+                
             knee_point = max_cycle - self.__max_life
             kink_RUL = []
             for i in range(0, len(cycle_list)):
@@ -244,7 +260,12 @@ class RemainingUsefulLife:
         y_batch_pred_test = self.__model.predict(x_batch_test)
         rmse_on_test = np.sqrt(mean_squared_error(y_batch_pred_test, y_batch_test))
         print("The RMSE on test dataset {} is {}.".format(self.__data_id,rmse_on_test))
-        print(f"predicted RUl {y_batch_pred_test}")
+        y_batch_pred_test_df = pd.DataFrame(y_batch_pred_test, columns= ["y_batch_pred_test"])
+        y_batch_test = pd.DataFrame(y_batch_test, columns= ["y_batch_test"])
+
+        y_batch_pred_df = pd.DataFrame(y_batch_pred, columns= ["y_batch_train"])
+        y_batch_train = pd.DataFrame(y_batch_reshape, columns= ["y_batch_train"])
+        return pd.concat([y_batch_test, y_batch_pred_test_df], axis = 1, join = "inner"), pd.concat([y_batch_train, y_batch_pred_df], axis = 1, join = "inner")
 
     def auto_rul(self): 
         RemainingUsefulLife.compute_piecewise_linear_rul(self)
@@ -253,7 +274,7 @@ class RemainingUsefulLife:
         RemainingUsefulLife.plot_rul(self)
         RemainingUsefulLife.batch_generation(self)
         RemainingUsefulLife.train_model(self)
-        RemainingUsefulLife.evaluate(self)
+        return RemainingUsefulLife.evaluate(self)
         
     
         

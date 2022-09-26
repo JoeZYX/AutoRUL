@@ -172,3 +172,12 @@ def batch_generator(training_data, sequence_length=15, window_size = 15, rtf_id 
     
     return x_batch, y_batch   
     
+def extract_RUL_per_rtf_id(df, rul_column_name = "RUL", rtf_id_column_name = "rtf_id"): 
+    RUL_per_rtf_ID = list()
+    rtf_ids = list()
+    for rtf_id in df[rtf_id_column_name].unique():
+        RUL_per_rtf_ID.append(df.loc[df[rtf_id_column_name] == rtf_id][rul_column_name].iloc[-1])
+        rtf_ids.append(rtf_id)
+    rul_and_rtf_id = {"rtf_id": rtf_ids, "rul_per_rtf_id": RUL_per_rtf_ID}
+
+    return   pd.DataFrame(rul_and_rtf_id, columns=['rtf_id','rul_per_rtf_id'])
