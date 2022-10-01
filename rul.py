@@ -33,13 +33,13 @@ class RemainingUsefulLife:
                  test_df, 
                  test_rul_per_rtf_id,
                  train_rul_per_rtf_id = None,
-                 max_life: int = 2*8*60, 
+                 max_life: int = 120, 
                  sequence_length: int = 5, 
-                 window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 2, path_to_trained_model: str = None) -> None:
-        self.__train_df = train_df
-        self.__test_df = test_df
-        self.__test_rul_per_rtf_id = test_rul_per_rtf_id
-        self.__train_rul_per_rtf_id = train_rul_per_rtf_id
+                 window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 30, path_to_trained_model: str = None) -> None:
+        self.__train_df = train_df.copy()
+        self.__test_df = test_df.copy()
+        self.__test_rul_per_rtf_id = test_rul_per_rtf_id.copy()
+        self.__train_rul_per_rtf_id = train_rul_per_rtf_id.copy()
         self.__max_life = max_life
         self.__sequence_length = sequence_length
         self.__window_size = window_size
@@ -50,64 +50,99 @@ class RemainingUsefulLife:
         self.__log_dir = path_to_trained_model
 
 
-
+    rul_pw = "RUL_pw"
     def compute_piecewise_linear_rul(self):
         id= self.__rtf_id
-        rul = []
         datasets = [self.__train_df, self.__test_df]
         for data in datasets: 
+            rul = []
             replacement_mapping_dict = {}
-            for i in range(len(data[self.__rtf_id].unique())):
-                replacement_mapping_dict[data[self.__rtf_id].unique()[i]] = i + 1       # replacing the ids with chronoligcal 1,2,3... since the code in autorul assumes this 
-            data[id] = data[id].replace(replacement_mapping_dict)
+            for i in range(len(data[id].unique())):
+                replacement_mapping_dict[data[id].unique()[i]] = i + 1       # replacing the unique rtf_ids with chronoligcal 1,2,3... since the code in autorul assumes this 
+            data[id] = data[id].replace(replacement_mapping_dict)  # notice: we are just replacing the UNIQUE values, we are NOT restructuring the whole column from 1-n
 
-        for _id in set(self.__train_df[id]):
-            trainFD_of_one_id =  self.__train_df[self.__train_df[id] == _id]
-            cycle_list = trainFD_of_one_id[self.__cycle_column_name].tolist()
-            for i in range(len(cycle_list)):  # in case some some cycles are missing, all of the cycles will be rearranged chronoligically from 1 up to len(cycle_list) 
-                cycle_list[i] = i + 1
-            if self.__train_rul_per_rtf_id is not None:
-                true_rul = int(self.__train_rul_per_rtf_id.iloc[_id - 1])
-                max_cycle = max(cycle_list) + true_rul
-            else:
-                max_cycle = max(cycle_list)
-            if self.__max_life > max_cycle: 
-                raise ValueError("Paramater max_life is too large. Try a smaller one")
-            knee_point = max_cycle - self.__max_life
-            kink_RUL = []
-            for i in range(0, len(cycle_list)):
-                if i < knee_point:
-                    kink_RUL.append(self.__max_life)
-                else:
-                    tmp = max_cycle-i-1 
-                    kink_RUL.append(tmp)
-            rul.extend(kink_RUL)
-        self.__train_df["RUL"] = rul 
+            for _id in set(data[id]):
+                trainFD_of_one_id =  data[data[id] == _id]
+                cycle_list = trainFD_of_one_id[self.__cycle_column_name].tolist()
+                if self.__max_life > len(cycle_list): 
+                    raise ValueError("Paramater max_life is too large.")
 
-        rul = []
-
-        for _id_test in set(self.__test_df[id]):      
-            true_rul = int(self.__test_rul_per_rtf_id.iloc[_id_test - 1])
-            testFD_of_one_id =  self.__test_df[self.__test_df[id] == _id_test]
-            cycle_list = testFD_of_one_id[self.__cycle_column_name].tolist()
-            for i in range(len(cycle_list)):  # in case some some cycles are missing, all of the cycles will be rearranged chronoligically from 1 up to len(cycle_list) 
-                cycle_list[i] = i + 1
-            max_cycle = max(cycle_list) + true_rul
-            if self.__max_life > max_cycle: 
-                raise ValueError("Paramater max_life is too large. Try a smaller one")
+                # just for debugging purposes...   --> shows anomalies in the cycle_list
+                cycle_list_ = pd.DataFrame({'cycle': cycle_list})
+                plot_cycle_anomalie(cycle_list_, _id)
                 
-            knee_point = max_cycle - self.__max_life
-            kink_RUL = []
-            for i in range(0, len(cycle_list)):
-                if i < knee_point:
-                    kink_RUL.append(self.__max_life)
-                else:
-                    tmp = max_cycle-i-1
-                    kink_RUL.append(tmp)    
+                if data.equals(self.__train_df):
+                    if self.__train_rul_per_rtf_id is not None:
+                        true_rul = int(self.__train_rul_per_rtf_id.iloc[_id-1])
+                    else: 
+                        true_rul = 0
+                elif data.equals(self.__test_df):
+                    if self.__test_rul_per_rtf_id is not None:
+                        true_rul = int(self.__test_rul_per_rtf_id.iloc[_id-1])
+                    else: 
+                        true_rul = 0                    
 
-            rul.extend(kink_RUL)
+                pw_rul_for_each_rtf_id = [true_rul]
+                for i in (range(1, len(cycle_list))[::-1]): 
+                    cycle_substract = cycle_list[i] - cycle_list[i-1]
+                    if i == len(cycle_list) - 1:   
+                        if cycle_substract + true_rul >= self.__max_life:
+                            pw_rul_for_each_rtf_id.append(self.__max_life)
+                        else:
+                            pw_rul_for_each_rtf_id.append(cycle_substract + true_rul)
+                    else:
+                        if cycle_substract + pw_rul_for_each_rtf_id[-1] >= self.__max_life:
+                            pw_rul_for_each_rtf_id.append(self.__max_life)
+                        else:
+                            pw_rul_for_each_rtf_id.append(cycle_substract + pw_rul_for_each_rtf_id[-1])
+                
+                rul.extend(pw_rul_for_each_rtf_id[::-1])
+            data[RemainingUsefulLife.rul_pw] = rul
 
-        self.__test_df["RUL"] = rul
+        #     if self.__train_rul_per_rtf_id is not None:
+        #         true_rul = int(self.__train_rul_per_rtf_id.iloc[_id - 1])
+        #         max_cycle = len(cycle_list) + true_rul
+        #     else:
+        #         max_cycle = len(cycle_list)
+        #     if self.__max_life > max_cycle: 
+        #         raise ValueError("Paramater max_life is too large. Try a smaller one")
+        #     knee_point = max_cycle - self.__max_life
+        #     kink_RUL = []
+        #     for i in range(0, len(cycle_list)):
+        #         if i < knee_point:
+        #             kink_RUL.append(self.__max_life)
+        #         else:
+        #             tmp = max_cycle-i-1 
+        #             kink_RUL.append(tmp)
+        #     rul.extend(kink_RUL)
+        # self.__train_df[RemainingUsefulLife.rul_pw] = rul 
+
+        # rul = []
+
+        # for _id_test in set(self.__test_df[id]):      
+        #     true_rul = int(self.__test_rul_per_rtf_id.iloc[_id_test - 1])
+        #     testFD_of_one_id =  self.__test_df[self.__test_df[id] == _id_test]
+        #     cycle_list = testFD_of_one_id[self.__cycle_column_name].tolist()
+        #     # for i in range(len(cycle_list)):  # in case some some cycles are missing, all of the cycles will be rearranged chronoligically from 1 up to len(cycle_list) 
+        #     #     cycle_list[i] = i + 1
+        #     max_cycle = len(cycle_list) + true_rul
+        #     if self.__max_life > max_cycle: 
+        #         raise ValueError("Paramater max_life is too large. Try a smaller one")
+                
+        #     knee_point = max_cycle - self.__max_life
+        #     kink_RUL = []
+        #     for i in range(0, len(cycle_list)):
+        #         if i < knee_point:
+        #             kink_RUL.append(self.__max_life)
+        #         else:
+        #             tmp = max_cycle-i-1
+        #             kink_RUL.append(tmp)    
+
+        #     rul.extend(kink_RUL)
+
+        # self.__test_df[RemainingUsefulLife.rul_pw] = rul
+        # # train_df = self.__train_df.copy()
+        return self.__train_df, self.__test_df
         
 
            # feature extension
@@ -119,14 +154,14 @@ class RemainingUsefulLife:
     
     def standard_normalization(self):
         # normalizing the training feautures
-        self.__train_features = self.__train_data_with_piecewise_rul.loc[:,~self.__train_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, 'RUL'])]
+        self.__train_features = self.__train_data_with_piecewise_rul.loc[:,~self.__train_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, RemainingUsefulLife.rul_pw])]
         mean = self.__train_features.mean()
         std = self.__train_features.std()
         std.replace(0, 1, inplace=True)
         # training dataset
         self.__train_features = (self.__train_features - mean) / std
         # adding RUL and cycle columns back to the normalized features
-        self.__train_features.loc[:, [self.__rtf_id ,self.__cycle_column_name, 'RUL']] = self.__train_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name, 'RUL']]
+        self.__train_features.loc[:, [self.__rtf_id ,self.__cycle_column_name, RemainingUsefulLife.rul_pw]] = self.__train_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name, RemainingUsefulLife.rul_pw]]
         self.__train_data_with_piecewise_rul = self.__train_features
         rtf_id_column = self.__train_data_with_piecewise_rul.pop(self.__rtf_id)
         cycle_column = self.__train_data_with_piecewise_rul.pop(self.__cycle_column_name)
@@ -135,10 +170,10 @@ class RemainingUsefulLife:
 
 
         #Testing dataset
-        self.__test_features = self.__test_data_with_piecewise_rul.loc[:,~self.__test_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, 'RUL'])]
+        self.__test_features = self.__test_data_with_piecewise_rul.loc[:,~self.__test_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, RemainingUsefulLife.rul_pw])]
 
         self.__test_features = (self.__test_features - mean) / std
-        self.__test_features.loc[:, [self.__rtf_id ,self.__cycle_column_name, 'RUL']] = self.__test_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name, 'RUL']]
+        self.__test_features.loc[:, [self.__rtf_id ,self.__cycle_column_name,RemainingUsefulLife.rul_pw]] = self.__test_data_with_piecewise_rul[[self.__rtf_id,self.__cycle_column_name,RemainingUsefulLife.rul_pw]]
 
         self.__test_data_with_piecewise_rul = self.__test_features
         rtf_id_column = self.__test_data_with_piecewise_rul.pop(self.__rtf_id)
@@ -161,13 +196,13 @@ class RemainingUsefulLife:
 
         plt.figure(figsize=(15,2))
         plt.plot(y_train, label="train") # y_train contains cycle ruls for different engines
-        plt.ylabel('RUL')
+        plt.ylabel(RemainingUsefulLife.rul_pw)
         plt.title("Piecewise RUL for different RTF Ids")
         plt.legend()
         plt.figure(figsize=(15,2))
 
         plt.plot(y_test, label="test")
-        plt.ylabel('RUL')
+        plt.ylabel(RemainingUsefulLife.rul_pw)
         plt.title("Piecewise RUL for different RTF Ids")
         plt.legend()
         plt.figure(figsize=(15,2))

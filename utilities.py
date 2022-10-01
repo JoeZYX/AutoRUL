@@ -25,10 +25,10 @@ def identify_and_remove_unique_columns(Dataframe, rtf_id = "rtf_id", cycle_colum
         col = record_single_unique.loc[i,"feature"]
         _type = record_single_unique.loc[i,"type"]
         if _type == "real":
-            p_value = target_real_feature_real_test(Dataframe[col], Dataframe["RUL"])
+            p_value = target_real_feature_real_test(Dataframe[col], Dataframe["RUL_pw"])
         else:
             le = preprocessing.LabelEncoder()
-            p_value = target_real_feature_binary_test(pd.Series(le.fit_transform(Dataframe[col])), Dataframe["RUL"])
+            p_value = target_real_feature_binary_test(pd.Series(le.fit_transform(Dataframe[col])), Dataframe["RUL_pw"])
         if p_value>0.05:
             unique_to_drop.append(col)
     
@@ -172,7 +172,7 @@ def batch_generator(training_data, sequence_length=15, window_size = 15, rtf_id 
     
     return x_batch, y_batch   
     
-def extract_RUL_per_rtf_id(df, rul_column_name = "RUL", rtf_id_column_name = "rtf_id"): 
+def extract_RUL_per_rtf_id(df, rul_column_name = "RUL_pw", rtf_id_column_name = "rtf_id"): 
     RUL_per_rtf_ID = list()
     rtf_ids = list()
     for rtf_id in df[rtf_id_column_name].unique():
@@ -181,3 +181,36 @@ def extract_RUL_per_rtf_id(df, rul_column_name = "RUL", rtf_id_column_name = "rt
     rul_and_rtf_id = {"rtf_id": rtf_ids, "rul_per_rtf_id": RUL_per_rtf_ID}
 
     return   pd.DataFrame(rul_and_rtf_id, columns=['rtf_id','rul_per_rtf_id'])
+
+def all_non_consecutive(arr): 
+    ans = []
+    start = arr[0]
+    index = 0
+    for number in arr: 
+        if start == number: 
+            start += 1
+            index+=1
+            continue
+        ans.append({'i': index, 'n': number})
+        start = number + 1
+        index +=1
+    return ans
+
+
+def data_preparation(data, columns_to_drop: list = None, rtf_id_column_name = 'rtf_id', train_data_split = 6, test_data_split = 2):
+    rtf_ids = data[rtf_id_column_name].unique()
+    if columns_to_drop is not None:
+        data= data.drop(columns_to_drop, axis=1) 
+    train_data = data.loc[data[rtf_id_column_name].isin(list(rtf_ids[:train_data_split]))]
+
+    test_data = data.loc[data[rtf_id_column_name].isin(list(rtf_ids[train_data_split: train_data_split + test_data_split]))]
+    return train_data, test_data
+
+
+def plot_cycle_anomalie(cycle_list, rtf_id):
+    all_non_consecutive_cycles = cycle_list.loc[cycle_list['cycle'] - cycle_list['cycle'].shift(1) != 1].loc[1:]
+    for i in all_non_consecutive_cycles.index:
+        print(f"the interval in the cycles with anomalies (for rtf_id = {rtf_id}):",cycle_list[i - 3: i+3] )
+        plt.plot(cycle_list[i-3:i+3], label = f"cycle list interval containing anomalies with index {i}")
+        plt.legend()
+        plt.show()
