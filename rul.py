@@ -28,6 +28,7 @@ from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStoppi
 
 
 class RemainingUsefulLife: 
+        
     def __init__(self,
                  train_df, 
                  test_df, 
@@ -38,8 +39,8 @@ class RemainingUsefulLife:
                  window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 30, path_to_trained_model: str = None) -> None:
         self.__train_df = train_df.copy()
         self.__test_df = test_df.copy()
-        self.__test_rul_per_rtf_id = test_rul_per_rtf_id.copy()
-        self.__train_rul_per_rtf_id = train_rul_per_rtf_id.copy()
+        self.__test_rul_per_rtf_id = test_rul_per_rtf_id
+        self.__train_rul_per_rtf_id = train_rul_per_rtf_id
         self.__max_life = max_life
         self.__sequence_length = sequence_length
         self.__window_size = window_size
@@ -49,28 +50,32 @@ class RemainingUsefulLife:
         self.__epochs = epochs
         self.__log_dir = path_to_trained_model
 
-
+    # storing the string in a variable, since it is often used in the code
     rul_pw = "RUL_pw"
+
+    # function to calculate the piecewise rul for both training and test data
     def compute_piecewise_linear_rul(self):
         id= self.__rtf_id
         datasets = [self.__train_df, self.__test_df]
-        for data in datasets: 
-            rul = []
+        for data in datasets: # since the process for rul calculation is the same, looping through train and test data to calculate pw_rul for each of them 
+            rul = [] 
+
+            # replacing the rtf_ids
             replacement_mapping_dict = {}
             for i in range(len(data[id].unique())):
                 replacement_mapping_dict[data[id].unique()[i]] = i + 1       # replacing the unique rtf_ids with chronoligcal 1,2,3... since the code in autorul assumes this 
             data[id] = data[id].replace(replacement_mapping_dict)  # notice: we are just replacing the UNIQUE values, we are NOT restructuring the whole column from 1-n
 
-            for _id in set(data[id]):
+            # pw_rul calculation
+            for _id in set(data[id]): # looping through unique rtf_ids
                 trainFD_of_one_id =  data[data[id] == _id]
                 cycle_list = trainFD_of_one_id[self.__cycle_column_name].tolist()
-                if self.__max_life > len(cycle_list): 
-                    raise ValueError("Paramater max_life is too large.")
-
-                # just for debugging purposes...   --> shows anomalies in the cycle_list
+         
+                # a plot just for debugging purposes...   --> shows anomalies in the cycle_list
                 cycle_list_ = pd.DataFrame({'cycle': cycle_list})
                 plot_cycle_anomalie(cycle_list_, _id)
                 
+                # getting the true_rul value (at the last cycle) for an rtf_id 
                 if data.equals(self.__train_df):
                     if self.__train_rul_per_rtf_id is not None:
                         true_rul = int(self.__train_rul_per_rtf_id.iloc[_id-1])
@@ -82,9 +87,10 @@ class RemainingUsefulLife:
                     else: 
                         true_rul = 0                    
 
-                pw_rul_for_each_rtf_id = [true_rul]
+                # calculating pw_rul 
+                pw_rul_for_each_rtf_id = [true_rul] 
                 for i in (range(1, len(cycle_list))[::-1]): 
-                    cycle_substract = cycle_list[i] - cycle_list[i-1]
+                    cycle_substract = cycle_list[i] - cycle_list[i-1] 
                     if i == len(cycle_list) - 1:   
                         if cycle_substract + true_rul >= self.__max_life:
                             pw_rul_for_each_rtf_id.append(self.__max_life)
@@ -98,6 +104,8 @@ class RemainingUsefulLife:
                 
                 rul.extend(pw_rul_for_each_rtf_id[::-1])
             data[RemainingUsefulLife.rul_pw] = rul
+
+        # The following is the old (based on Zhou et al. logic) implementation of the pw_rul function
 
         #     if self.__train_rul_per_rtf_id is not None:
         #         true_rul = int(self.__train_rul_per_rtf_id.iloc[_id - 1])
@@ -182,8 +190,8 @@ class RemainingUsefulLife:
         self.__test_data_with_piecewise_rul.insert(1,self.__cycle_column_name, cycle_column)
 
 
-    def plot_rul(self):
-
+    def plot_rul(self): # plotting the
+        
         training_data = self.__train_data_with_piecewise_rul.values
         testing_data = self.__test_data_with_piecewise_rul.values
         x_train = training_data[:, 2:-1] # train data without "rul, rtf_id, cycle" columns
@@ -219,7 +227,6 @@ class RemainingUsefulLife:
         self.__number_of_sensor = self.__x_batch.shape[-2]
 
     def train_model(self): 
-
         valid = check_the_config_valid(architecture_parameters,self.__window_size,self.__number_of_sensor)
         if valid:
             self.__model = build_the_model(architecture_parameters, self.__sequence_length, self.__window_size, self.__number_of_sensor)
@@ -231,7 +238,7 @@ class RemainingUsefulLife:
 
         if self.__log_dir is None:
             dateTimeObj = datetime.now()
-
+            # creating a folder to store the differnt models in later on
             self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id,
                                                 dateTimeObj.year,
                                                 dateTimeObj.month,
@@ -250,7 +257,6 @@ class RemainingUsefulLife:
 
         # if you have enough time budget, you can set a large epochs and large patience
 
-         
             self.__model.fit(self.__x_batch,self.__y_batch, 
                     batch_size=15, 
                     epochs=self.__epochs, 
@@ -300,9 +306,12 @@ class RemainingUsefulLife:
 
         y_batch_pred_df = pd.DataFrame(y_batch_pred, columns= ["y_batch_train"])
         y_batch_train = pd.DataFrame(y_batch_reshape, columns= ["y_batch_train"])
+
+        # returning the prediction results and the expected results for test and train data respectively 
         return pd.concat([y_batch_test, y_batch_pred_test_df], axis = 1, join = "inner"), pd.concat([y_batch_train, y_batch_pred_df], axis = 1, join = "inner")
 
-    def auto_rul(self): 
+
+    def auto_rul(self): # function which simply excecutes all other functions
         RemainingUsefulLife.compute_piecewise_linear_rul(self)
         RemainingUsefulLife.feature_extension(self)
         RemainingUsefulLife.standard_normalization(self)
