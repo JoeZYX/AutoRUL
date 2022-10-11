@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 import math
 import numpy as np
 
-def identify_and_remove_unique_columns(Dataframe, rtf_id = "rtf_id", cycle_column_name = "cycle"):
+def identify_and_remove_unique_columns(Dataframe, rtf_id:str = "rtf_id", cycle_column_name = "cycle"):
+
+
     Dataframe = Dataframe.copy()
     del Dataframe[rtf_id]
     del Dataframe[cycle_column_name]
@@ -69,10 +71,10 @@ def test_batch_generator(test, sequence_length=10, window_size = 10, rtf_id = "r
             for i in range(sequence_length+window_size-1-test_of_one_id.shape[0]):
                 test_of_one_id = pd.concat((pd.DataFrame(test_of_one_id.iloc[0,:]).T,test_of_one_id))
             
-        y_batch[_id-1] = test_of_one_id.iloc[-1, -1]
+        y_batch[int(_id)-1] = test_of_one_id.iloc[-1, -1]
         for seq in range(sequence_length):
             
-            x_batch[_id-1][seq] = test_of_one_id.iloc[seq:seq+ window_size, 2:-1].values
+            x_batch[int(_id)-1][seq] = test_of_one_id.iloc[seq:seq+ window_size, 2:-1].values
     
     return x_batch, y_batch
 
@@ -133,6 +135,7 @@ def batch_generator(training_data, sequence_length=15, window_size = 15, rtf_id 
     engine_ids = list(training_data[rtf_id].unique())
     temp = training_data.copy()
     for id_ in engine_ids:
+        id_ = int(id_)
         indexes = temp[temp[rtf_id] == id_].index
         traj_data = temp.loc[indexes]
         cutoff_cycle = max(traj_data[cycle_column_name]) - sequence_length - window_size + 1

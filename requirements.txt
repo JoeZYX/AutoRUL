@@ -1,8 +1,12 @@
-python '3.6.7'
-pandas '0.23.4'
-matplotlib '3.0.3'
-numpy '1.16.2'
-tensorflow '1.15.0'
-tsfresh '0.13.0'
-sklearn '0.21.3'
-tensorflow.keras '2.2.4-tf'
+# macOS/Linux: 3.6 <= python <= 3.8
+# Windows: 3.6 <= python <= 3.7
+# pip install -r requirements.txt
+
+
+# python==3.7
+pandas>=0.23.4
+matplotlib>=3.0.3
+numpy>=1.16.2
+tensorflow>=2.2.4
+tsfresh>=0.13.0
+scikit-learn>=0.21.3

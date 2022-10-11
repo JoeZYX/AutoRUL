@@ -1,3 +1,4 @@
+from enum import auto
 from itertools import cycle
 from msilib import sequence
 from random import triangular
@@ -25,18 +26,20 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import TimeDistributed
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-
+from typing import Tuple
 
 class RemainingUsefulLife: 
         
     def __init__(self,
                  train_df, 
                  test_df, 
-                 test_rul_per_rtf_id,
+                 test_rul_per_rtf_id = None,
                  train_rul_per_rtf_id = None,
                  max_life: int = 120, 
                  sequence_length: int = 5, 
                  window_size: int = 16, rtf_id = 'rtf_id', cycle_column_name = 'cycle', data_id = 'kaggel_plant', epochs: int = 30, path_to_trained_model: str = None) -> None:
+
+
         self.__train_df = train_df.copy()
         self.__test_df = test_df.copy()
         self.__test_rul_per_rtf_id = test_rul_per_rtf_id
@@ -54,7 +57,12 @@ class RemainingUsefulLife:
     rul_pw = "RUL_pw"
 
     # function to calculate the piecewise rul for both training and test data
-    def compute_piecewise_linear_rul(self):
+    def compute_piecewise_linear_rul(self)->Tuple[pd.DataFrame,pd.DataFrame]:
+        """_summary_
+
+        Returns:
+            Tuple[pd.DataFrame,pd.DataFrame]: _description_
+        """
         id= self.__rtf_id
         datasets = [self.__train_df, self.__test_df]
         for data in datasets: # since the process for rul calculation is the same, looping through train and test data to calculate pw_rul for each of them 
@@ -63,7 +71,7 @@ class RemainingUsefulLife:
             # replacing the rtf_ids
             replacement_mapping_dict = {}
             for i in range(len(data[id].unique())):
-                replacement_mapping_dict[data[id].unique()[i]] = i + 1       # replacing the unique rtf_ids with chronoligcal 1,2,3... since the code in autorul assumes this 
+                replacement_mapping_dict[int(data[id].unique()[i])] = int(i + 1)       # replacing the unique rtf_ids with chronoligcal 1,2,3... since the code in autorul assumes this 
             data[id] = data[id].replace(replacement_mapping_dict)  # notice: we are just replacing the UNIQUE values, we are NOT restructuring the whole column from 1-n
 
             # pw_rul calculation
@@ -155,12 +163,14 @@ class RemainingUsefulLife:
 
            # feature extension
     def feature_extension(self): 
-
+        self.__train_df, self.__test_df =  RemainingUsefulLife.compute_piecewise_linear_rul(self)
         col_to_drop = identify_and_remove_unique_columns(self.__train_df, rtf_id = self.__rtf_id, cycle_column_name = self.__cycle_column_name)
         self.__train_data_with_piecewise_rul = self.__train_df.drop(col_to_drop,axis = 1)
         self.__test_data_with_piecewise_rul = self.__test_df.drop(col_to_drop,axis = 1)
+        return self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul
     
     def standard_normalization(self):
+        self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.feature_extension(self)
         # normalizing the training feautures
         self.__train_features = self.__train_data_with_piecewise_rul.loc[:,~self.__train_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, RemainingUsefulLife.rul_pw])]
         mean = self.__train_features.mean()
@@ -189,9 +199,11 @@ class RemainingUsefulLife:
         self.__test_data_with_piecewise_rul.insert(0, self.__rtf_id, rtf_id_column)
         self.__test_data_with_piecewise_rul.insert(1,self.__cycle_column_name, cycle_column)
 
+        return self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul
 
     def plot_rul(self): # plotting the
         
+        self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.standard_normalization(self)
         training_data = self.__train_data_with_piecewise_rul.values
         testing_data = self.__test_data_with_piecewise_rul.values
         x_train = training_data[:, 2:-1] # train data without "rul, rtf_id, cycle" columns
@@ -218,15 +230,16 @@ class RemainingUsefulLife:
         plt.title("train: " + self.__data_id )
         plt.show()
 
-
-    def batch_generation(self): 
+    def build_model(self): 
+                ########## batch generation for training data ##########
+        self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.standard_normalization(self)
         # Prepare the training set according to the  window size and sequence_length
         self.__x_batch, self.__y_batch =batch_generator(self.__train_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size, rtf_id = self.__rtf_id, cycle_column_name = self.__cycle_column_name)
         self.__x_batch = np.expand_dims(self.__x_batch, axis=4)
         self.__y_batch = np.expand_dims(self.__y_batch, axis=1)
         self.__number_of_sensor = self.__x_batch.shape[-2]
 
-    def train_model(self): 
+        ############ Build model ############
         valid = check_the_config_valid(architecture_parameters,self.__window_size,self.__number_of_sensor)
         if valid:
             self.__model = build_the_model(architecture_parameters, self.__sequence_length, self.__window_size, self.__number_of_sensor)
@@ -236,49 +249,57 @@ class RemainingUsefulLife:
         out = self.__model(input_data)
         print(self.__model.summary())
 
-        if self.__log_dir is None:
-            dateTimeObj = datetime.now()
-            # creating a folder to store the differnt models in later on
-            self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id,
-                                                dateTimeObj.year,
-                                                dateTimeObj.month,
-                                                dateTimeObj.day,
-                                                dateTimeObj.hour,
-                                                dateTimeObj.minute,
-                                                dateTimeObj.second)
-            os.makedirs(self.__log_dir)
-            
-
-            checkpoint = ModelCheckpoint(self.__log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
-                                        monitor='val_loss', save_weights_only=True, save_best_only=True)
-            reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
-            early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
 
-        # if you have enough time budget, you can set a large epochs and large patience
+    def train_model(self): 
 
-            self.__model.fit(self.__x_batch,self.__y_batch, 
-                    batch_size=15, 
-                    epochs=self.__epochs, 
-                    callbacks=[#logging, 
-                                checkpoint, 
-                                reduce_lr, 
-                                early_stopping],
-                    validation_split=0.075)
-            self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
-            self.__train_model = True # simple checker to check if a new model is being trained 
-        else: 
-            self.__train_model = False # if a given model is supposed to be executed 
+        RemainingUsefulLife.build_model(self)
+
+        dateTimeObj = datetime.now()
+        # creating a folder to store the differnt models in later on
+        self.__log_dir = "logs/{}_{}_{}_{}_{}_{}_{}/".format(self.__data_id,
+                                            dateTimeObj.year,
+                                            dateTimeObj.month,
+                                            dateTimeObj.day,
+                                            dateTimeObj.hour,
+                                            dateTimeObj.minute,
+                                            dateTimeObj.second)
+        os.makedirs(self.__log_dir)
+        
+
+        checkpoint = ModelCheckpoint(self.__log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
+                                    monitor='val_loss', save_weights_only=True, save_best_only=True)
+        reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
+        early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
 
-    def evaluate(self):
+    # if you have enough time budget, you can set a large epochs and large patience
+
+        self.__model.fit(self.__x_batch,self.__y_batch, 
+                batch_size=15, 
+                epochs=self.__epochs, 
+                callbacks=[#logging, 
+                            checkpoint, 
+                            reduce_lr, 
+                            early_stopping],
+                validation_split=0.075)
+        self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
+        # self.__train_model = True # simple checker to check if a new model is being trained 
+        # else: 
+        #     self.__train_model = False # if a given model is supposed to be executed
+        #     print(f"can not train a model if a path to a model is given. If a new model training is desired, leave the paramter {self.__log_dir} out.") 
+        
+
+    def auto_rul(self):
+        self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.standard_normalization(self)
+
         x_batch_test, y_batch_test =  test_batch_generator(self.__test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size, rtf_id= self.__rtf_id)
         x_batch_test = np.expand_dims(x_batch_test, axis=4)
-        # loading the weights of the current model which was just trained and saved
-        if self.__train_model == True: 
+
+        if self.__log_dir is None:
+            RemainingUsefulLife.train_model(self)
             modellist = os.listdir(self.__log_dir)
             modellist = [file for file in modellist if "val_loss" in file]
-            
             self.__model.load_weights(self.__log_dir + modellist[-1])
         # loading the weights of the given model (user input)
         else:
@@ -286,7 +307,22 @@ class RemainingUsefulLife:
             if not os.path.exists(model_weights):
                 print("no such a weight file")
             else:
+                RemainingUsefulLife.build_model(self)
                 self.__model.load_weights(model_weights)
+
+        # # loading the weights of the current model which was just trained and saved
+        # if self.__train_model == True: 
+        #     modellist = os.listdir(self.__log_dir)
+        #     modellist = [file for file in modellist if "val_loss" in file]
+            
+        #     self.__model.load_weights(self.__log_dir + modellist[-1])
+        # # loading the weights of the given model (user input)
+        # else:
+        #     model_weights = self.__log_dir
+        #     if not os.path.exists(model_weights):
+        #         print("no such a weight file")
+        #     else:
+        #         self.__model.load_weights(model_weights)
     
         # performance on training dataset
         y_batch_pred = self.__model.predict(self.__x_batch)
@@ -304,21 +340,25 @@ class RemainingUsefulLife:
         y_batch_pred_test_df = pd.DataFrame(y_batch_pred_test, columns= ["y_batch_pred_test"])
         y_batch_test = pd.DataFrame(y_batch_test, columns= ["y_batch_test"])
 
-        y_batch_pred_df = pd.DataFrame(y_batch_pred, columns= ["y_batch_train"])
+        y_batch_pred_df = pd.DataFrame(y_batch_pred, columns= ["y_batch_pred_train"])
         y_batch_train = pd.DataFrame(y_batch_reshape, columns= ["y_batch_train"])
 
         # returning the prediction results and the expected results for test and train data respectively 
         return pd.concat([y_batch_test, y_batch_pred_test_df], axis = 1, join = "inner"), pd.concat([y_batch_train, y_batch_pred_df], axis = 1, join = "inner")
 
 
-    def auto_rul(self): # function which simply excecutes all other functions
-        RemainingUsefulLife.compute_piecewise_linear_rul(self)
-        RemainingUsefulLife.feature_extension(self)
-        RemainingUsefulLife.standard_normalization(self)
-        RemainingUsefulLife.plot_rul(self)
-        RemainingUsefulLife.batch_generation(self)
-        RemainingUsefulLife.train_model(self)
-        return RemainingUsefulLife.evaluate(self)
+    # def plot_pred(self): 
+    #     RemainingUsefulLife.auto_rul(self)
+
+
+
+    # def auto_rul(self): # function which simply excecutes all other functions
+    #     RemainingUsefulLife.compute_piecewise_linear_rul(self)
+    #     RemainingUsefulLife.feature_extension(self)
+    #     RemainingUsefulLife.standard_normalization(self)
+    #     RemainingUsefulLife.plot_rul(self)
+    #     RemainingUsefulLife.train_model(self)
+    #     return RemainingUsefulLife.evaluate(self)
         
     
         
