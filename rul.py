@@ -272,7 +272,6 @@ class RemainingUsefulLife:
         reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
-
     # if you have enough time budget, you can set a large epochs and large patience
 
         self.__model.fit(self.__x_batch,self.__y_batch, 
@@ -310,19 +309,6 @@ class RemainingUsefulLife:
                 RemainingUsefulLife.build_model(self)
                 self.__model.load_weights(model_weights)
 
-        # # loading the weights of the current model which was just trained and saved
-        # if self.__train_model == True: 
-        #     modellist = os.listdir(self.__log_dir)
-        #     modellist = [file for file in modellist if "val_loss" in file]
-            
-        #     self.__model.load_weights(self.__log_dir + modellist[-1])
-        # # loading the weights of the given model (user input)
-        # else:
-        #     model_weights = self.__log_dir
-        #     if not os.path.exists(model_weights):
-        #         print("no such a weight file")
-        #     else:
-        #         self.__model.load_weights(model_weights)
     
         # performance on training dataset
         y_batch_pred = self.__model.predict(self.__x_batch)
@@ -345,10 +331,6 @@ class RemainingUsefulLife:
 
         # returning the prediction results and the expected results for test and train data respectively 
         return pd.concat([y_batch_test, y_batch_pred_test_df], axis = 1, join = "inner"), pd.concat([y_batch_train, y_batch_pred_df], axis = 1, join = "inner")
-
-
-    # def plot_pred(self): 
-    #     RemainingUsefulLife.auto_rul(self)
 
 
 
