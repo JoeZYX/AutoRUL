@@ -42,7 +42,7 @@ class RemainingUsefulLife:
 
         self.__train_df = train_df.copy()
         self.__test_df = test_df.copy()
-        self.__test_rul_per_rtf_id = test_rul_per_rtf_id
+        self.__test_rul_per_rtf_id = test_rul_per_rtf_id 
         self.__train_rul_per_rtf_id = train_rul_per_rtf_id
         self.__max_life = max_life
         self.__sequence_length = sequence_length
@@ -51,19 +51,20 @@ class RemainingUsefulLife:
         self.__cycle_column_name = cycle_column_name
         self.__data_id = data_id
         self.__epochs = epochs
-        self.__log_dir = path_to_trained_model
+        self.__log_dir = path_to_trained_model # one can provide the path to a pretrained model here, if the path is provided, instead of training a new model, the pretrained model is taken to run evaluation
 
     # storing the string in a variable, since it is often used in the code
     rul_pw = "RUL_pw"
 
     # function to calculate the piecewise rul for both training and test data
     def compute_piecewise_linear_rul(self)->Tuple[pd.DataFrame,pd.DataFrame]:
-        """_summary_
+        """
+        Computes piecewise linear RUL for the dataframes according to the given max_life paramter 
 
         Returns:
-            Tuple[pd.DataFrame,pd.DataFrame]: _description_
+            Tuple[pd.DataFrame,pd.DataFrame]: returns training dataset and test dataset with piecewise rul respectively
         """
-        id= self.__rtf_id
+        id = self.__rtf_id
         datasets = [self.__train_df, self.__test_df]
         for data in datasets: # since the process for rul calculation is the same, looping through train and test data to calculate pw_rul for each of them 
             rul = [] 
@@ -80,13 +81,14 @@ class RemainingUsefulLife:
                 cycle_list = trainFD_of_one_id[self.__cycle_column_name].tolist()
          
                 # a plot just for debugging purposes...   --> shows anomalies in the cycle_list
-                cycle_list_ = pd.DataFrame({'cycle': cycle_list})
-                plot_cycle_anomalie(cycle_list_, _id)
+                # cycle_list_ = pd.DataFrame({'cycle': cycle_list})
+                # plot_cycle_anomalie(cycle_list_, _id)
                 
                 # getting the true_rul value (at the last cycle) for an rtf_id 
                 if data.equals(self.__train_df):
                     if self.__train_rul_per_rtf_id is not None:
                         true_rul = int(self.__train_rul_per_rtf_id.iloc[_id-1])
+                            
                     else: 
                         true_rul = 0
                 elif data.equals(self.__test_df):
@@ -161,15 +163,28 @@ class RemainingUsefulLife:
         return self.__train_df, self.__test_df
         
 
+
            # feature extension
-    def feature_extension(self): 
+    def feature_extension(self)->Tuple[pd.DataFrame,pd.DataFrame]: 
+
+        """ Some columns that do not contain useful information is removed here. 
+
+        Returns:
+            Tuple[pd.DataFrame,pd.DataFrame]: training and test datasets with some unnecessary columns droped 
+        """
         self.__train_df, self.__test_df =  RemainingUsefulLife.compute_piecewise_linear_rul(self)
         col_to_drop = identify_and_remove_unique_columns(self.__train_df, rtf_id = self.__rtf_id, cycle_column_name = self.__cycle_column_name)
         self.__train_data_with_piecewise_rul = self.__train_df.drop(col_to_drop,axis = 1)
         self.__test_data_with_piecewise_rul = self.__test_df.drop(col_to_drop,axis = 1)
         return self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul
     
-    def standard_normalization(self):
+    def standard_normalization(self)->Tuple[pd.DataFrame,pd.DataFrame] :
+
+        """standard normalization is applied to the features.
+
+        Returns:
+            Tuple[pd.DataFrame,pd.DataFrame]: training and test datasets normalized 
+        """
         self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.feature_extension(self)
         # normalizing the training feautures
         self.__train_features = self.__train_data_with_piecewise_rul.loc[:,~self.__train_data_with_piecewise_rul.columns.isin([self.__cycle_column_name, self.__rtf_id, RemainingUsefulLife.rul_pw])]
@@ -201,7 +216,9 @@ class RemainingUsefulLife:
 
         return self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul
 
-    def plot_rul(self): # plotting the
+    def plot_rul(self): 
+        """function to plot RUL values for both training and test datsets
+        """
         
         self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.standard_normalization(self)
         training_data = self.__train_data_with_piecewise_rul.values
@@ -231,6 +248,9 @@ class RemainingUsefulLife:
         plt.show()
 
     def build_model(self): 
+
+        """ funciton to build the initial model
+        """
                 ########## batch generation for training data ##########
         self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.standard_normalization(self)
         # Prepare the training set according to the  window size and sequence_length
@@ -253,6 +273,9 @@ class RemainingUsefulLife:
 
     def train_model(self): 
 
+        """trains a new model (if "path_to_trained_model" parameter is not provided)
+        """
+
         RemainingUsefulLife.build_model(self)
 
         dateTimeObj = datetime.now()
@@ -272,7 +295,7 @@ class RemainingUsefulLife:
         reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.3, patience=5, verbose=1)
         early_stopping = EarlyStopping(monitor='val_loss', min_delta=0, patience=15, verbose=1, mode='auto')
 
-    # if you have enough time budget, you can set a large epochs and large patience
+    # if enough time budget, one can set a large epochs and large patience
 
         self.__model.fit(self.__x_batch,self.__y_batch, 
                 batch_size=15, 
@@ -283,13 +306,17 @@ class RemainingUsefulLife:
                             early_stopping],
                 validation_split=0.075)
         self.__model.save_weights(self.__log_dir + 'trained_weights_final.h5')
-        # self.__train_model = True # simple checker to check if a new model is being trained 
-        # else: 
-        #     self.__train_model = False # if a given model is supposed to be executed
-        #     print(f"can not train a model if a path to a model is given. If a new model training is desired, leave the paramter {self.__log_dir} out.") 
-        
+    
 
-    def auto_rul(self):
+    def auto_rul(self)->Tuple[pd.DataFrame,pd.DataFrame]:
+
+        """ if "path_to_trained_model" parameter is not provided, trains a new model and evaluates its performance on both training and test datsets by calculating RMSE respectively
+            if "path_to_trained_model" parameter is  provided, takes that model and evaluates its performance on both training and test datasets by calculating RMSE respectively 
+
+        Returns:
+            Tuple[pd.DataFrame,pd.DataFrame]: returns (ground_truth vs predicted values) for test dataset and training dataset respectively. 
+                                                for the test dataset, RUL for each test rtf_id is predicted, whereas for training dataset, RUL for EVERY CYCLE of each rtf_id is predicted
+        """
         self.__train_data_with_piecewise_rul, self.__test_data_with_piecewise_rul = RemainingUsefulLife.standard_normalization(self)
 
         x_batch_test, y_batch_test =  test_batch_generator(self.__test_data_with_piecewise_rul, sequence_length=self.__sequence_length, window_size = self.__window_size, rtf_id= self.__rtf_id)
@@ -317,6 +344,8 @@ class RemainingUsefulLife:
         y_batch_reshape = self.__y_batch.reshape(self.__y_batch.shape[0], self.__y_batch.shape[1])
         rmse_on_train = np.sqrt(mean_squared_error(y_batch_pred, y_batch_reshape))
 
+        y_batch_pred_df = pd.DataFrame(y_batch_pred, columns= ["y_batch_pred_train"])
+        y_batch_train = pd.DataFrame(y_batch_reshape, columns= ["y_batch_train"])
         print("The RMSE on Training dataset {} is {}.".format(self.__data_id,rmse_on_train))
 
         # performance on test dataset
@@ -326,22 +355,31 @@ class RemainingUsefulLife:
         y_batch_pred_test_df = pd.DataFrame(y_batch_pred_test, columns= ["y_batch_pred_test"])
         y_batch_test = pd.DataFrame(y_batch_test, columns= ["y_batch_test"])
 
-        y_batch_pred_df = pd.DataFrame(y_batch_pred, columns= ["y_batch_pred_train"])
-        y_batch_train = pd.DataFrame(y_batch_reshape, columns= ["y_batch_train"])
+
+
+        # #performacnce on test dataset with all the cycles (not just the last cycle of an rtf_id)
+        # x_batch_test_all_cycles, y_batch_test_all_cycles = batch_generator(self.__test_data_with_piecewise_rul,sequence_length=self.__sequence_length,window_size = self.__window_size, rtf_id = self.__rtf_id, cycle_column_name = self.__cycle_column_name)
+        # x_batch_test_all_cycles = np.expand_dims(self.__x_batch, axis=4)
+        # y_batch_test_all_cycles = np.expand_dims(self.__y_batch, axis=1)
+
+
+        # y_batch_pred_test_all_cycles = self.__model.predict(x_batch_test_all_cycles)
+
+        # y_batch_pred_test_all_cycles = y_batch_pred_test_all_cycles.reshape(y_batch_pred_test_all_cycles.shape[0], y_batch_pred_test_all_cycles.shape[1])
+        # y_batch_reshape_test_all_cycles = y_batch_test_all_cycles.reshape(y_batch_test_all_cycles.shape[0], y_batch_test_all_cycles.shape[1])
+        # rmse_on_test_all_cycles = np.sqrt(mean_squared_error(y_batch_pred_test_all_cycles, y_batch_reshape_test_all_cycles))
+
+        # y_batch_pred_df_test_all_cycles = pd.DataFrame(y_batch_pred_test_all_cycles, columns= ["y_batch_pred_test_all_cycles"])
+        # y_batch_test_all_cycles = pd.DataFrame(y_batch_reshape_test_all_cycles, columns= ["y_batch_test_all_cycles"])
+        # print("The RMSE on test dataset (with all cycles) {} is {}.".format(self.__data_id,rmse_on_test_all_cycles))
+
+        #pd.concat([y_batch_test_all_cycles, y_batch_pred_df_test_all_cycles], axis = 1, join = "inner"),
 
         # returning the prediction results and the expected results for test and train data respectively 
         return pd.concat([y_batch_test, y_batch_pred_test_df], axis = 1, join = "inner"), pd.concat([y_batch_train, y_batch_pred_df], axis = 1, join = "inner")
 
 
 
-    # def auto_rul(self): # function which simply excecutes all other functions
-    #     RemainingUsefulLife.compute_piecewise_linear_rul(self)
-    #     RemainingUsefulLife.feature_extension(self)
-    #     RemainingUsefulLife.standard_normalization(self)
-    #     RemainingUsefulLife.plot_rul(self)
-    #     RemainingUsefulLife.train_model(self)
-    #     return RemainingUsefulLife.evaluate(self)
-        
     
         
    

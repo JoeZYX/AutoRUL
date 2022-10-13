@@ -136,8 +136,8 @@ def batch_generator(training_data, sequence_length=15, window_size = 15, rtf_id 
     temp = training_data.copy()
     for id_ in engine_ids:
         id_ = int(id_)
-        indexes = temp[temp[rtf_id] == id_].index
-        traj_data = temp.loc[indexes]
+        indexes = temp[temp[rtf_id] == id_].index # indexes of the dataframe of one rtf_id
+        traj_data = temp.loc[indexes]  # dataframe of one rtf_id
         cutoff_cycle = max(traj_data[cycle_column_name]) - sequence_length - window_size + 1
         
         if cutoff_cycle<0:
@@ -151,10 +151,10 @@ def batch_generator(training_data, sequence_length=15, window_size = 15, rtf_id 
     indexes = list(temp.index)
     del temp
     
-    feature_number = training_data.shape[1]-3
+    feature_number = training_data.shape[1]-3 # number of features
 
-    x_shape = (len(indexes), sequence_length, window_size, feature_number)
-    x_batch = np.zeros(shape=x_shape, dtype=np.float32)
+    x_shape = (len(indexes), sequence_length, window_size, feature_number) 
+    x_batch = np.zeros(shape=x_shape, dtype=np.float32) 
     y_shape = (len(indexes))
     y_batch = np.zeros(shape=y_shape, dtype=np.float32)
 
