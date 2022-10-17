@@ -13,7 +13,7 @@ def identify_and_remove_unique_columns(Dataframe, rtf_id:str = "rtf_id", cycle_c
     del Dataframe[rtf_id]
     del Dataframe[cycle_column_name]
     
- 
+
     unique_counts = Dataframe.nunique()
     record_single_unique = pd.DataFrame(unique_counts[unique_counts == 1]).reset_index().rename(columns = {'index': 'feature', 0: 'nunique'})
     unique_to_drop = list(record_single_unique['feature'])
